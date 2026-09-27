@@ -361,6 +361,16 @@ void MainPanel::create_main(lv_obj_t * parent) {
 void MainPanel::create_sensors(json &temp_sensors) {
   std::lock_guard<std::mutex> lock(lv_lock);
   sensors.clear();
+  // Preserve the original balanced chart layout for a short list. Once it
+  // grows, fixed-height rows and vertical scrolling keep every tool visible.
+  const bool many_sensors = temp_sensors.size() > 4;
+  if (many_sensors) {
+    lv_obj_add_flag(temp_cont, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(temp_cont, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(temp_cont, LV_SCROLLBAR_MODE_AUTO);
+  } else {
+    lv_obj_clear_flag(temp_cont, LV_OBJ_FLAG_SCROLLABLE);
+  }
   for (auto &sensor : temp_sensors.items()) {
     std::string key = sensor.key();
     bool controllable = sensor.value()["controllable"].template get<bool>();
@@ -382,7 +392,7 @@ void MainPanel::create_sensors(json &temp_sensors) {
     std::string display_name = sensor.value()["display_name"].template get<std::string>();
 
     const void* sensor_img = Icons::HEATER;
-    if (key == "extruder") {
+    if (key.rfind("extruder", 0) == 0) {
       sensor_img = Icons::EXTRUDER;
     } else if (key == "heater_bed") {
       sensor_img = Icons::BED;
@@ -394,10 +404,13 @@ void MainPanel::create_sensors(json &temp_sensors) {
     auto sc = std::make_shared<SensorContainer>(ws, temp_cont, sensor_img,
 			   display_name.c_str(), color_code, controllable, false, numpad, key,
         		   temp_chart, temp_series);
-    // the rows share the column above the chart, never shorter than one line
-    lv_obj_set_height(sc->get_sensor(), 0);
-    lv_obj_set_flex_grow(sc->get_sensor(), 1);
-    lv_obj_set_style_min_height(sc->get_sensor(), scale_r(30), 0);
+    if (many_sensors) {
+      lv_obj_set_height(sc->get_sensor(), scale_r(34));
+    } else {
+      lv_obj_set_height(sc->get_sensor(), 0);
+      lv_obj_set_flex_grow(sc->get_sensor(), 1);
+      lv_obj_set_style_min_height(sc->get_sensor(), scale_r(30), 0);
+    }
     sensors.insert({key, sc});
   }
 
@@ -405,7 +418,9 @@ void MainPanel::create_sensors(json &temp_sensors) {
   // bottom of the column where it belongs
   const uint32_t last = lv_obj_get_child_cnt(temp_cont);
   if (last > 0) lv_obj_move_to_index(temp_chart_box, last - 1);
-  lv_obj_set_flex_grow(temp_chart_box, std::max<int>(1, sensors.size()));
+  lv_obj_set_height(temp_chart_box, many_sensors ? scale_r(110) : 0);
+  lv_obj_set_flex_grow(temp_chart_box,
+                       many_sensors ? 0 : std::max<int>(1, sensors.size()));
 }
 
 void MainPanel::create_fans(json &fans) {

@@ -88,7 +88,9 @@ class PrintStatusPanel : public NotifyConsumer {
   double filament_diameter;
   double flow;
   int extruder_target;
+  std::string active_extruder_;
   int heater_bed_target;
+  void update_active_extruder(const json &update);
   json current_file;
 
   std::map<std::string, int> fan_speeds;

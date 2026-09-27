@@ -54,6 +54,7 @@ PrintStatusPanel::PrintStatusPanel(KWebSocketClient &websocket_client,
   , estimated_time_s(0)
   , filament_diameter(1.75) // XXX: check config
   , extruder_target(-1)
+  , active_extruder_("extruder")
   , heater_bed_target(-1)
   , chamber_sensor_key_(Config::get_instance()->get<std::string>("/ui/chamber_temp_sensor"))
 {
@@ -181,6 +182,7 @@ void PrintStatusPanel::reset() {
   auto v = State::get_instance()->get_data("/printer_state/configfile/config/extruder/filament_diameter"_json_pointer);
   filament_diameter = v.is_null() ? 1.750 : std::stod(v.template get<std::string>());
   extruder_target = -1;
+  active_extruder_.clear();
   heater_bed_target = -1;
 
   // no preview until the next print's metadata arrives
@@ -215,6 +217,7 @@ void PrintStatusPanel::init(json &fan_cfgs) {
   fans.update_label(fmt::format("{}", join(values, ", ")).c_str());
 
   reset();
+  update_active_extruder(json::object());
   populate();
   json &pstat_state = State::get_instance()->get_data("/printer_state/print_stats/state"_json_pointer);
   if (!pstat_state.is_null()) {
@@ -338,9 +341,12 @@ void PrintStatusPanel::consume(json &j) {
     mini_print_status.update_status(print_status);
   }
 
-  auto v = j["/params/0/extruder/target"_json_pointer];
-  if (!v.is_null()) {
-    extruder_target = v.template get<int>();
+  update_active_extruder(j);
+
+  json v;
+  if (!active_extruder_.empty()) {
+    v = j[json::json_pointer("/params/0/" + active_extruder_ + "/target")];
+    if (v.is_number()) extruder_target = v.get<int>();
   }
 
   v = j["/params/0/heater_bed/target"_json_pointer];
@@ -348,8 +354,9 @@ void PrintStatusPanel::consume(json &j) {
     heater_bed_target = v.template get<int>();
   }
 
-  v = j["/params/0/extruder/temperature"_json_pointer];
-  if (!v.is_null()) {
+  v = active_extruder_.empty() ? json()
+      : j[json::json_pointer("/params/0/" + active_extruder_ + "/temperature")];
+  if (v.is_number()) {
     if (extruder_target > 0) {
       extruder_temp.update_label(fmt::format("{} / {}", v.template get<int>(), extruder_target).c_str());
     } else {
@@ -455,6 +462,42 @@ void PrintStatusPanel::consume(json &j) {
   // layers
   v = j["/params/0/print_stats/info"_json_pointer];
   update_layers(v);
+}
+
+void PrintStatusPanel::update_active_extruder(const json &update) {
+  // toolhead.extruder is Klipper's active heater (also after ACTIVATE_EXTRUDER).
+  // Notifications are patches, so use the saved state when this field is absent.
+  json reported = update.value("/params/0/toolhead/extruder"_json_pointer, json());
+  if (reported.is_null())
+    reported = State::get_instance()->get_data(
+        "/printer_state/toolhead/extruder"_json_pointer);
+  const std::string name = reported.is_string()
+      ? reported.get<std::string>() : "extruder";
+  if (name == active_extruder_) return;
+  active_extruder_ = name;
+  extruder_target = -1;
+  if (name.empty()) {
+    extruder_temp.update_label("--");
+    return;
+  }
+  const json state = State::get_instance()->get_data(
+      json::json_pointer("/printer_state/" + name));
+  if (!state.is_object()) {
+    extruder_temp.update_label("--");
+    return;
+  }
+  const auto target = state.value("target", json());
+  const auto temperature = state.value("temperature", json());
+  if (target.is_number()) extruder_target = target.get<int>();
+  if (temperature.is_number()) {
+    const int value = temperature.get<int>();
+    const std::string label = extruder_target > 0
+        ? fmt::format("{} / {}", value, extruder_target)
+        : fmt::format("{}", value);
+    extruder_temp.update_label(label.c_str());
+  } else {
+    extruder_temp.update_label("--");
+  }
 }
 
 void PrintStatusPanel::handle_callback(lv_event_t *event) {

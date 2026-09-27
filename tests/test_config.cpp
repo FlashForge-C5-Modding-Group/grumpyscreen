@@ -82,6 +82,16 @@ display_name: Enclosure
 color: green
 controllable: true
 
+[monitored_sensor "extruder1"]
+display_name: Extruder 1
+color: blue
+controllable: true
+
+[monitored_sensor "extruder2"]
+display_name: Extruder 2
+color: red
+controllable: true
+
 [missing_section]
 value: ignored
 )INI";
@@ -167,6 +177,8 @@ value: ignored
         sensor_by_id[it->get<std::string>()] = o;
     }
     assert(sensor_by_id.contains("temperature_sensor enclosure"));
+    assert(sensor_by_id.contains("extruder1"));
+    assert(sensor_by_id.contains("extruder2"));
 
     std::remove("build/test_config.ini");
     std::remove("build/test_config_override.ini");
