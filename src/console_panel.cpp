@@ -1,4 +1,5 @@
 #include "console_panel.h"
+#include "config.h"
 #include "state.h"
 #include "logger.h"
 #include "klipper_temp_filter.h"
@@ -15,7 +16,8 @@ LV_FONT_DECLARE(dejavusans_mono_14);
 ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock, lv_obj_t *parent)
   : ws(websocket_client)
   , lv_lock(lock)
-  , console_cont(create_screen(parent))
+  , tabview(lv_tabview_create(parent, LV_DIR_TOP, scale_r(36)))
+  , console_cont(create_screen(lv_tabview_add_tab(tabview, "Console")))
   , top_cont(create_row(console_cont))
   , output(lv_textarea_create(top_cont))
   , lower_cont(create_row(console_cont))
@@ -80,20 +82,32 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   delete_btn.hide_label();
   lv_obj_set_size(delete_btn.get_container(), scale_r(34), scale_r(34));
 
+  if (tabview != NULL) {
+    lv_obj_t *macro_tab = lv_tabview_add_tab(tabview, "Macros");
+    lv_obj_set_size(tabview, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_pad_all(lv_obj_get_parent(console_cont), 0, 0);
+    lv_obj_set_style_pad_all(macro_tab, 0, 0);
+    style_embedded_tabview(tabview);
+    macro_panel = std::make_unique<MacroPanel>(macro_tab,
+        [this](const std::string &gcode) { this->send_gcode(gcode); });
+  }
+
   ws.register_method_callback("notify_gcode_response",
 			      "ConsolePanel",
 			      [this](json& d) { this->handle_macro_response(d); });
 }
 
 ConsolePanel::~ConsolePanel() {
-  if (console_cont != NULL) {
-    lv_obj_del(console_cont);
+  lv_obj_t *outer = get_container();
+  if (outer != NULL) {
+    lv_obj_del(outer);
+    tabview = NULL;
     console_cont = NULL;
   }
 }
 
 lv_obj_t *ConsolePanel::get_container() {
-  return console_cont;
+  return tabview != NULL ? tabview : console_cont;
 }
 
 void ConsolePanel::set_gcode_input_enabled(bool enabled) {
@@ -171,6 +185,12 @@ void ConsolePanel::handle_macro_response(json &j) {
   }
 }
 
+void ConsolePanel::send_gcode(const std::string &gcode) {
+  // klipper does not echo commands, so show what was sent
+  ta_add_text_limit_lines(output, "> " + gcode);
+  ws.gcode_script(gcode);
+}
+
 void ConsolePanel::handle_input(lv_event_t *e) {
   const lv_event_code_t code = lv_event_get_code(e);
   if (!gcode_input_enabled) {
@@ -188,9 +208,7 @@ void ConsolePanel::handle_input(lv_event_t *e) {
   if (code == LV_EVENT_READY) {
     const char *text = lv_textarea_get_text(input);
     if (text != NULL && text[0] != '\0') {
-      // klipper does not echo commands, so show what was sent
-      ta_add_text_limit_lines(output, std::string("> ") + text);
-      ws.gcode_script(text);
+      send_gcode(text);
       lv_textarea_set_text(input, "");
     }
   }

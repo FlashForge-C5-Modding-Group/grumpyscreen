@@ -2,9 +2,11 @@
 #define __CONSOLE_PANEL_H__
 
 #include "button_container.h"
+#include "macro_panel.h"
 #include "websocket_client.h"
 #include "lvgl/lvgl.h"
 
+#include <memory>
 #include <mutex>
 #include <list>
 
@@ -19,6 +21,7 @@ class ConsolePanel {
   void handle_macro_response(json &d);
   void handle_delete_btn(lv_event_t *event);
   void handle_input(lv_event_t *event);
+  void send_gcode(const std::string &gcode);
 
   static void _handle_delete_btn(lv_event_t *event) {
     ConsolePanel *panel = (ConsolePanel*)event->user_data;
@@ -32,6 +35,8 @@ class ConsolePanel {
  private:
   KWebSocketClient &ws;
   std::mutex &lv_lock;
+  // Console and Macros tabs
+  lv_obj_t *tabview;
   lv_obj_t *console_cont;
   lv_obj_t *top_cont;
   lv_obj_t *output;
@@ -40,6 +45,7 @@ class ConsolePanel {
   lv_obj_t *input;
   lv_obj_t *kb;
   ButtonContainer delete_btn;
+  std::unique_ptr<MacroPanel> macro_panel;
   bool gcode_input_enabled = false;
 };
 
