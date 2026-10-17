@@ -9,6 +9,7 @@
 #include "sensor_container.h"
 #include "numpad.h"
 #include "lvgl/lvgl.h"
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -28,8 +29,26 @@ class ExtruderPanel : public NotifyConsumer {
     panel->handle_callback(event);
   };
 
+  static void _handle_extruder_select(lv_event_t *event) {
+    ExtruderPanel *panel = (ExtruderPanel*)event->user_data;
+    panel->select_extruder(lv_dropdown_get_selected(lv_event_get_target(event)), true);
+  };
+
  private:
+  // Multi-extruder: every extruder Klipper reports gets a readout, a drop-down
+  // picks which one the panel acts on, and the actions switch to it first.
+  void refresh_extruders();
+  void select_extruder(size_t idx, bool by_user);
+  std::string activate_selected();
+
   KWebSocketClient &ws;
+  Numpad &numpad;
+  std::vector<std::string> extruders;              // "extruder", "extruder1", ...
+  std::vector<std::unique_ptr<SensorContainer>> extra_temps;  // readouts after the first
+  lv_obj_t *extruder_dropdown = NULL;
+  size_t selected = 0;
+  bool user_selected = false;
+  std::string active_extruder = "extruder";
   lv_obj_t *panel_cont;
   SpoolmanPanel &spoolman_panel;
   std::vector<std::string> temp_options;

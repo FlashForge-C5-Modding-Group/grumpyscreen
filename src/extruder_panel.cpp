@@ -97,6 +97,7 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
 			     SpoolmanPanel &sm)
   : NotifyConsumer(lock)
   , ws(websocket_client)
+  , numpad(numpad)
   , panel_cont(create_screen(NULL))
   , spoolman_panel(sm)
   , temp_options(load_selector_options("/ui/extruder_temp_presets", 8))
@@ -193,7 +194,110 @@ ExtruderPanel::~ExtruderPanel() {
 }
 
 void ExtruderPanel::foreground() {
+  refresh_extruders();
+  // follow the printer's active extruder until the user picks another
+  user_selected = false;
+  auto it = std::find(extruders.begin(), extruders.end(), active_extruder);
+  select_extruder(it == extruders.end() ? 0 : it - extruders.begin(), false);
   lv_obj_move_foreground(panel_cont);
+}
+
+// "extruder" is tool 0, "extruderN" is tool N.
+static int extruder_index(const std::string &name) {
+  if (name.size() > 8) {
+    try { return std::stoi(name.substr(8)); } catch (...) {}
+  }
+  return 0;
+}
+
+void ExtruderPanel::refresh_extruders() {
+  State *state = State::get_instance();
+  auto names = state->get_extruders();
+  std::sort(names.begin(), names.end(), [](const std::string &a, const std::string &b) {
+    return extruder_index(a) < extruder_index(b);
+  });
+  if (names.size() <= 1 || names == extruders) {
+    if (names.size() <= 1) extruders = names;
+    return;
+  }
+  extruders = names;
+
+  json &status = state->get_data("/printer_state"_json_pointer);
+  json::json_pointer active_ptr("/toolhead/extruder");
+  if (status.is_object() && status.contains(active_ptr) && status[active_ptr].is_string())
+    active_extruder = status[active_ptr].template get<std::string>();
+
+  // One readout per extruder, all in the header cell; only the selected one
+  // shows. The first is the panel's own extruder_temp.
+  extra_temps.clear();
+  std::string options;
+  for (size_t i = 0; i < extruders.size(); i++) {
+    const std::string &name = extruders[i];
+    options += (i ? "\n" : "") + fmt::format("T{}  ({})", extruder_index(name), name);
+    if (i == 0) continue;
+    auto label = fmt::format("Extruder {}", extruder_index(name));
+    auto sensor = std::make_unique<SensorContainer>(ws, panel_cont, Icons::EXTRUDER, label.c_str(),
+                                                    theme_secondary(), false, true, numpad, name, nullptr, nullptr);
+    json temp = status.is_object() ? status[json::json_pointer("/" + name + "/temperature")] : json();
+    json target = status.is_object() ? status[json::json_pointer("/" + name + "/target")] : json();
+    if (temp.is_number()) sensor->update_value(temp.template get<int>());
+    if (target.is_number()) sensor->update_target(target.template get<int>());
+    extra_temps.push_back(std::move(sensor));
+  }
+
+  if (extruder_dropdown == NULL) {
+    extruder_dropdown = lv_dropdown_create(panel_cont);
+    lv_obj_add_event_cb(extruder_dropdown, &ExtruderPanel::_handle_extruder_select,
+                        LV_EVENT_VALUE_CHANGED, this);
+  }
+  lv_dropdown_set_options(extruder_dropdown, options.c_str());
+
+  // readout on the left of the header, the drop-down on the right
+  std::vector<lv_obj_t *> readouts = {extruder_temp.get_sensor()};
+  for (auto &t : extra_temps) readouts.push_back(t->get_sensor());
+  for (lv_obj_t *r : readouts) {
+    lv_obj_set_grid_cell(r, LV_GRID_ALIGN_START, 0, 2, LV_GRID_ALIGN_CENTER, 0, 1);
+    lv_obj_set_width(r, LV_PCT(50));
+  }
+  lv_obj_set_grid_cell(extruder_dropdown, LV_GRID_ALIGN_END, 0, 2, LV_GRID_ALIGN_CENTER, 0, 1);
+  lv_obj_set_width(extruder_dropdown, LV_PCT(28));
+}
+
+void ExtruderPanel::select_extruder(size_t idx, bool by_user) {
+  if (extruders.size() <= 1) return;
+  if (idx >= extruders.size()) idx = 0;
+  selected = idx;
+  if (by_user) user_selected = true;
+  if (extruder_dropdown != NULL && lv_dropdown_get_selected(extruder_dropdown) != idx)
+    lv_dropdown_set_selected(extruder_dropdown, idx);
+  for (size_t i = 0; i < extruders.size(); i++) {
+    lv_obj_t *r = i == 0 ? extruder_temp.get_sensor() : extra_temps[i - 1]->get_sensor();
+    if (i == selected) lv_obj_clear_flag(r, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(r, LV_OBJ_FLAG_HIDDEN);
+  }
+}
+
+// G-code that makes the selected extruder the active one, ahead of an action.
+// With a toolchanger that is its T<n> macro (it picks the tool up); otherwise
+// Klipper's ACTIVATE_EXTRUDER.
+std::string ExtruderPanel::activate_selected() {
+  if (extruders.size() <= 1 || selected >= extruders.size()) return "";
+  const std::string &name = extruders[selected];
+  if (name == active_extruder) return "";
+  bool toolchanger = false, t_macro = false;
+  std::string macro = fmt::format("gcode_macro t{}", extruder_index(name));
+  json &objects = State::get_instance()->get_data("/printer_objs/objects"_json_pointer);
+  if (objects.is_array()) {
+    for (auto &o : objects) {
+      if (!o.is_string()) continue;
+      std::string obj = o.template get<std::string>();
+      std::transform(obj.begin(), obj.end(), obj.begin(), [](unsigned char c) { return std::tolower(c); });
+      if (obj.find("toolchanger") != std::string::npos) toolchanger = true;
+      if (obj == macro) t_macro = true;
+    }
+  }
+  if (toolchanger && t_macro) return fmt::format("T{}\n", extruder_index(name));
+  return fmt::format("ACTIVATE_EXTRUDER EXTRUDER={}\n", name);
 }
 
 void ExtruderPanel::background() {
@@ -213,9 +317,27 @@ void ExtruderPanel::consume(json& j) {
   }
   
   auto temp_value = j["/params/0/extruder/temperature"_json_pointer];
-  if (!temp_value.is_null()) {   
+  if (!temp_value.is_null()) {
     int value = temp_value.template get<int>();
     extruder_temp.update_value(value);
+  }
+
+  // the other extruders' readouts
+  for (size_t i = 1; i < extruders.size() && i - 1 < extra_temps.size(); i++) {
+    auto &t = j[json::json_pointer("/params/0/" + extruders[i] + "/target")];
+    if (t.is_number()) extra_temps[i - 1]->update_target(t.template get<int>());
+    auto &v = j[json::json_pointer("/params/0/" + extruders[i] + "/temperature")];
+    if (v.is_number()) extra_temps[i - 1]->update_value(v.template get<int>());
+  }
+
+  // the printer's active extruder; the panel follows it unless the user chose
+  auto &active = j["/params/0/toolhead/extruder"_json_pointer];
+  if (active.is_string()) {
+    active_extruder = active.template get<std::string>();
+    if (!user_selected) {
+      auto it = std::find(extruders.begin(), extruders.end(), active_extruder);
+      if (it != extruders.end()) select_extruder(it - extruders.begin(), false);
+    }
   }
 
   json &pstat_state = j["/params/0/print_stats/state"_json_pointer];
@@ -270,7 +392,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
 						    speed_selector.get_selected_idx());
 
       const std::string extrude_macro = conf->get<std::string>("/default_macros/extrude");
-      ws.gcode_script(fmt::format(extrude_macro, temp, len, std::stoi(speed) * 60));
+      ws.gcode_script(activate_selected() + fmt::format(extrude_macro, temp, len, std::stoi(speed) * 60));
     }
 
     if (btn == retract_btn.get_container()) {
@@ -284,7 +406,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
       const char *speed = lv_btnmatrix_get_btn_text(speed_selector.get_selector(),
 						    speed_selector.get_selected_idx());
 			const std::string retract_macro = conf->get<std::string>("/default_macros/retract");
-      ws.gcode_script(fmt::format(retract_macro, temp, len, std::stoi(speed) * 60));
+      ws.gcode_script(activate_selected() + fmt::format(retract_macro, temp, len, std::stoi(speed) * 60));
     }
 
     if (btn == unload_btn.get_container()) {
@@ -295,7 +417,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
 
       const char *temp = lv_btnmatrix_get_btn_text(temp_selector.get_selector(),
                                                    temp_selector.get_selected_idx());
-      ws.gcode_script(fmt::format(unload_filament_macro, temp));
+      ws.gcode_script(activate_selected() + fmt::format(unload_filament_macro, temp));
     }
 
     if (btn == load_btn.get_container()) {
@@ -306,7 +428,7 @@ void ExtruderPanel::handle_callback(lv_event_t *e) {
 
       const char *temp = lv_btnmatrix_get_btn_text(temp_selector.get_selector(),
                                                    temp_selector.get_selected_idx());
-      ws.gcode_script(fmt::format(load_filament_macro, temp));
+      ws.gcode_script(activate_selected() + fmt::format(load_filament_macro, temp));
     }
 
     if (btn == cooldown_btn.get_container()) {

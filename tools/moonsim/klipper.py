@@ -62,6 +62,27 @@ def build_config():
         CONFIG["heater_fan hotend_fan"] = {"heater": ["extruder"], "heater_temp": 50.0, "fan_speed": 1.0}
         CONFIG["controller_fan mcu_fan"] = {"heater": ["extruder", "heater_bed"], "idle_timeout": 30,
                                             "fan_speed": 1.0}
+    # The macros' G-code, with parameters as Klipper configs write them, so
+    # the macro settings dialog has something to read.
+    CONFIG["gcode_macro LOAD_FILAMENT"] = {"gcode": (
+        "{% set temp = params.EXTRUDER_TEMP|default(220)|float %}\n"
+        "{% set length = params.LENGTH|default(50)|float %}\nM109 S{temp}\nG1 E{length} F300")}
+    CONFIG["gcode_macro UNLOAD_FILAMENT"] = {"gcode": (
+        "{% set temp = params.EXTRUDER_TEMP|default(220)|float %}\nM109 S{temp}\nG1 E-80 F1200")}
+    CONFIG["gcode_macro _GUPPYSCREEN_EXTRUDE"] = {"gcode": (
+        "M109 S{params.EXTRUDER_TEMP|default(220)}\n"
+        "G1 E{params.EXTRUDE_LEN|default(10)} F{params['SPEED']|default(300)}")}
+    # many parameters: the settings dialog has to scroll
+    CONFIG["gcode_macro PRINT_START"] = {"gcode": (
+        "{% set bed = params.BED|default(60)|float %}\n"
+        "{% set hotend = params.HOTEND|default(220)|float %}\n"
+        "{% set tool = params.TOOL|default(0)|int %}\n"
+        "{% set tools = params.TOOLS|default('0') %}\n"
+        "{% set layer = params.FIRST_LAYER_HEIGHT|default(0.2)|float %}\n"
+        "{% set purge = params.PURGE|default(1)|int %}\n"
+        "{% set mesh = params.BED_LEVELING|default(1)|int %}\n"
+        "{% set material = params.MATERIAL|default('PLA') %}\n"
+        "M190 S{bed}\nM109 S{hotend}")}
     CONFIG["virtual_sdcard"] = {"path": a.session_dir + "/gcodes", "on_error_gcode": "TURN_OFF_HEATERS"}
     CONFIG["idle_timeout"] = {"timeout": float(a.idle_timeout), "gcode": "TURN_OFF_HEATERS\nM84"}
 
