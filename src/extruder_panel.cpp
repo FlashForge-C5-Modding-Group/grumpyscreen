@@ -195,6 +195,7 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   }
 
   spoolman_btn.disable();  // state, not style: until moonraker says spoolman is there
+  spoolman_btn.hide();
 
   ws.register_notify_update(this);
 }
@@ -217,6 +218,11 @@ void ExtruderPanel::background() {
 
 void ExtruderPanel::enable_spoolman() {
   spoolman_btn.enable();
+}
+
+void ExtruderPanel::show_spoolman(bool shown) {
+  if (shown) lv_obj_clear_flag(spoolman_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
+  else lv_obj_add_flag(spoolman_btn.get_container(), LV_OBJ_FLAG_HIDDEN);
 }
 
 void ExtruderPanel::consume(json& j) {
