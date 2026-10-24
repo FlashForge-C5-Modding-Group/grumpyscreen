@@ -25,6 +25,7 @@ struct MmuSlot {
   // metadata ownership elsewhere, e.g. pulling it from spoolman instead.
   // Backends that never refuse leave it true.
   bool can_configure = true;
+  int spool_id = -1;     // spoolman spool in the slot, -1 = none (only set when linked)
 };
 
 // a tool a print file uses, from the slicer's metadata
@@ -116,6 +117,28 @@ class MmuBackend {
   virtual void map_tool(int tool, int slot) { (void)tool; (void)slot; }
   // may several tools draw from one slot
   virtual bool can_share_slot() const { return false; }
+
+  // Put a spoolman spool in a slot. Only backends linked to spoolman offer it;
+  // the rest leave these alone and the spoolman tab offers no lanes.
+  virtual bool can_assign_spool() const { return false; }
+  // spool_id -1 takes the spool out of the slot
+  virtual void assign_spool(int slot, int spool_id) { (void)slot; (void)spool_id; }
+  // why can_assign_spool() is false, to follow the vendor's name: "AFC is not
+  // linked to Spoolman"
+  virtual const char *assign_spool_refusal() const {
+    return spoolman ? "is not taking spool assignments right now" : "is not linked to Spoolman";
+  }
+  // names of the slots holding spool_id, ", " separated
+  std::string lanes_with_spool(int spool_id) const {
+    std::string out;
+    if (!spoolman || spool_id < 0) return out;
+    for (const auto &s : slots) {
+      if (s.spool_id != spool_id) continue;
+      if (!out.empty()) out += ", ";
+      out += s.name;
+    }
+    return out;
+  }
 
   // Acknowledge the current `message`. Optional: only backends that hold
   // messages in a queue of their own have anything to do here, and for them a
