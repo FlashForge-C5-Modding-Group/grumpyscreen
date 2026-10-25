@@ -1,4 +1,6 @@
 #include "init_panel.h"
+#include "i18n.h"
+#include "i18n.h"
 #include "utils.h"
 #include "state.h"
 #include "config.h"
@@ -26,7 +28,7 @@ InitPanel::InitPanel(MainPanel &mp, std::mutex& l)
   lv_obj_center(cont);
 
   lv_obj_set_width(label, LV_PCT(100));
-  lv_label_set_text(label, LV_SYMBOL_WARNING " Waiting for Moonraker to start...");
+  lv_label_set_text(label, (std::string(LV_SYMBOL_WARNING) + ::tr(" Waiting for Moonraker to start...")).c_str());
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
 
   main_panel.add_tab_change_cb(&InitPanel::_tabview_event_cb, this);
@@ -206,7 +208,7 @@ void InitPanel::websocket_disconnected(KWebSocketClient &ws) {
 }
 
 void InitPanel::waiting_for_moonraker() {
-  begin_waiting(LV_SYMBOL_WARNING " Waiting for Moonraker to start...", false);
+  begin_waiting((std::string(LV_SYMBOL_WARNING) + ::tr(" Waiting for Moonraker to start...")).c_str(), false);
 }
 
 void InitPanel::begin_waiting(const char *message, bool firmware_restart_available) {

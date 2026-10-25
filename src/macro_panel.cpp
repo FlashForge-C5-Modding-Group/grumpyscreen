@@ -1,4 +1,5 @@
 #include "macro_panel.h"
+#include "i18n.h"
 #include "config.h"
 #include "icons.h"
 #include "logger.h"
@@ -67,7 +68,7 @@ MacroPanel::MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)
   if (buttons.empty()) {
     lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_label_set_text(lv_label_create(grid), "No macros configured");
+    lv_label_set_text(lv_label_create(grid), ::tr("No macros configured"));
     return;
   }
 
@@ -230,8 +231,8 @@ void MacroPanel::open_dialog(size_t idx) {
   lv_obj_set_flex_flow(buttons_row, LV_FLEX_FLOW_ROW);
   lv_obj_set_style_pad_column(buttons_row, gap(), 0);
   // the theme's flat buttons; Send carries the accent as the dialog's action
-  cancel_btn = create_text_btn(buttons_row, "Cancel", &MacroPanel::handle_dialog, this);
-  send_btn = create_text_btn(buttons_row, "Send", &MacroPanel::handle_dialog, this);
+  cancel_btn = create_text_btn(buttons_row, ::tr("Cancel"), &MacroPanel::handle_dialog, this);
+  send_btn = create_text_btn(buttons_row, ::tr("Send"), &MacroPanel::handle_dialog, this);
   set_action_btn(send_btn, true, theme_primary());
   lv_obj_set_style_text_color(lv_obj_get_child(send_btn, 0), col(ON_PRIMARY), 0);
   // compact: sized to the text, so the header stays one slim line

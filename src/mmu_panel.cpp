@@ -1,4 +1,6 @@
 #include "mmu_panel.h"
+#include "i18n.h"
+#include "i18n.h"
 #include "mmu_tools.h"
 #include "config.h"
 #include "icons.h"
@@ -268,7 +270,7 @@ void MmuPanel::create(lv_obj_t *parent) {
 
   status_label = lv_label_create(status_bar);
   lv_label_set_long_mode(status_label, LV_LABEL_LONG_DOT);
-  lv_label_set_text(status_label, "MMU Standby");
+  lv_label_set_text(status_label, ::tr("MMU Standby"));
   lv_obj_set_style_text_font(status_label, scale_font(12), 0);
   lv_obj_align(status_label, LV_ALIGN_LEFT_MID, 0, 0);
   lv_obj_set_width(status_label, LV_PCT(100));
@@ -301,10 +303,10 @@ void MmuPanel::create(lv_obj_t *parent) {
   lv_obj_align(nav_prev_btn, LV_ALIGN_LEFT_MID, 0, 0);
 
   nav_label = lv_label_create(nav_row);
-  lv_label_set_text(nav_label, "Page 1 / 1");
+  lv_label_set_text(nav_label, ::tr("Page 1 / 1"));
   lv_obj_center(nav_label);
 
-  nav_next_btn = create_text_btn(nav_row, "Next >", &MmuPanel::_handle_page_next, this);
+  nav_next_btn = create_text_btn(nav_row, ::tr("Next >"), &MmuPanel::_handle_page_next, this);
   lv_obj_set_size(nav_next_btn, scale_w(70), LV_PCT(100));
   lv_obj_align(nav_next_btn, LV_ALIGN_RIGHT_MID, 0, 0);
 }
@@ -362,10 +364,10 @@ void MmuPanel::create_edit_screen() {
   lv_obj_set_size(left_actions, LV_PCT(100), LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(left_actions, LV_FLEX_FLOW_COLUMN);
 
-  edit_load_btn = create_text_btn(left_actions, "Load", &MmuPanel::_handle_edit_action, this);
+  edit_load_btn = create_text_btn(left_actions, ::tr("Load"), &MmuPanel::_handle_edit_action, this);
   lv_obj_set_size(edit_load_btn, LV_PCT(100), scale_r(40));
 
-  edit_eject_btn = create_text_btn(left_actions, "Eject Spool", &MmuPanel::_handle_edit_action, this);
+  edit_eject_btn = create_text_btn(left_actions, ::tr("Eject Spool"), &MmuPanel::_handle_edit_action, this);
   lv_obj_set_size(edit_eject_btn, LV_PCT(100), scale_r(40));
 
   // These two take the accent under a finger, the way a lane tile does. The
@@ -399,7 +401,7 @@ void MmuPanel::create_edit_screen() {
   lv_obj_set_flex_flow(colour_sec, LV_FLEX_FLOW_COLUMN);
 
   lv_obj_t *col_title = lv_label_create(colour_sec);
-  lv_label_set_text(col_title, "COLOUR PRESETS:");
+  lv_label_set_text(col_title, ::tr("COLOUR PRESETS:"));
   lv_obj_add_style(col_title, &styles().dim_label, 0);
 
   // One colour out of a set, so the set gets the tray the materials and the
@@ -486,7 +488,7 @@ void MmuPanel::create_edit_screen() {
   lv_obj_set_flex_flow(mat_sec, LV_FLEX_FLOW_COLUMN);
 
   lv_obj_t *mat_title = lv_label_create(mat_sec);
-  lv_label_set_text(mat_title, "MATERIAL:");
+  lv_label_set_text(mat_title, ::tr("MATERIAL:"));
   lv_obj_add_style(mat_title, &styles().dim_label, 0);
 
   // One material out of a set, which is what a selector is, so it wears the
@@ -559,9 +561,9 @@ void MmuPanel::create_edit_screen() {
   // opens (no backend is selected yet when this is built)
   edit_backup_btn.reset(new ButtonContainer(action_row, Icons::INFINITY_IMG, "Backup",
                                             &MmuPanel::_handle_edit_action, this));
-  edit_save_btn.reset(new ButtonContainer(action_row, Icons::SD_IMG, "Save",
+  edit_save_btn.reset(new ButtonContainer(action_row, Icons::SD_IMG, ::tr("Save"),
                                           &MmuPanel::_handle_edit_action, this));
-  edit_back_btn.reset(new ButtonContainer(action_row, Icons::BACK, "Back",
+  edit_back_btn.reset(new ButtonContainer(action_row, Icons::BACK, ::tr("Back"),
                                           &MmuPanel::_handle_edit_action, this));
   // use_plain, not use_card: these sit inside the right-hand panel, and a set
   // of controls gets one box round it, not a box each. The icon still takes
@@ -790,7 +792,7 @@ void MmuPanel::update_nav(size_t total_pages) {
     return;
   }
   lv_obj_clear_flag(nav_row, LV_OBJ_FLAG_HIDDEN);
-  lv_label_set_text(nav_label, fmt::format("Page {} / {}", current_page + 1, total_pages).c_str());
+  lv_label_set_text(nav_label, fmt::format(fmt::runtime(::tr("Page {} / {}")), current_page + 1, total_pages).c_str());
   if (current_page == 0) lv_obj_add_flag(nav_prev_btn, LV_OBJ_FLAG_HIDDEN);
   else lv_obj_clear_flag(nav_prev_btn, LV_OBJ_FLAG_HIDDEN);
   if (current_page + 1 >= total_pages) lv_obj_add_flag(nav_next_btn, LV_OBJ_FLAG_HIDDEN);
@@ -839,11 +841,11 @@ void MmuPanel::populate() {
     lv_obj_set_style_text_color(card.title, slot.tool_loaded ? primary : col(TEXT), 0);
 
     // Line 2: Material. A configured material shows even when the slot is
-    // physically empty (the translucent spool conveys emptiness); bare slots say "Empty"
+    // physically empty (the translucent spool conveys emptiness); bare slots say ::tr("Empty")
     if (has_filament) {
       lv_label_set_text(card.material, slot.material.empty() ? "-" : slot.material.c_str());
     } else {
-      lv_label_set_text(card.material, slot.material.empty() ? "Empty" : slot.material.c_str());
+      lv_label_set_text(card.material, slot.material.empty() ? ::tr("Empty") : slot.material.c_str());
     }
 
     // the loaded lane outlines itself in the accent, a step heavier than the
@@ -858,12 +860,12 @@ void MmuPanel::populate() {
   // cleared by the backend, so that tap asks it to recover instead.
   if (error_state || (!message.empty() && message != dismissed_message)) {
     lv_obj_set_style_bg_color(status_bar, col(message_error || error_state ? DANGER : WARNING), 0);
-    lv_label_set_text(status_label, fmt::format("{}{}", message.empty() ? "MMU error" : message,
+    lv_label_set_text(status_label, fmt::format("{}{}", message.empty() ? ::tr("MMU error") : message,
                                                 error_state ? " - Tap to reset"
                                                             : " - Tap to dismiss").c_str());
   } else if (bypass) {
     lv_obj_set_style_bg_color(status_bar, col(WARNING), 0);
-    lv_label_set_text(status_label, "Bypass Active - Single Spool");
+    lv_label_set_text(status_label, ::tr("Bypass Active - Single Spool"));
   } else {
     lv_obj_set_style_bg_color(status_bar, tile_bg(), 0);  // resting: same fill as a lane
     std::string text;
@@ -873,12 +875,12 @@ void MmuPanel::populate() {
     } else if (loaded_idx >= 0 && (size_t)loaded_idx < slots.size()) {
       const MmuSlot &slot = slots[loaded_idx];
       const std::string label = slot_label(slot, loaded_idx);
-      text = slot.material.empty() ? fmt::format("Loaded: {}", label)
-                                   : fmt::format("Loaded: {} - {}", label, slot.material);
+      text = slot.material.empty() ? fmt::format(fmt::runtime(::tr("Loaded: {}")), label)
+                                   : fmt::format(fmt::runtime(::tr("Loaded: {} - {}")), label, slot.material);
     } else if (slots.empty()) {
-      text = "No slots reported";
+      text = ::tr("No slots reported");
     } else {
-      text = "Tap spool to configure / load";
+      text = ::tr("Tap spool to configure / load");
     }
     lv_label_set_text(status_label, text.c_str());
   }
@@ -1065,7 +1067,7 @@ void MmuPanel::update_edit_preview() {
   // model a vendor: unload is offered on the loaded slot only, and a slot must
   // be unloaded before it can be ejected.
   const bool swapping = !slot.tool_loaded && loaded_idx >= 0;
-  set_btn_label(edit_load_btn, slot.tool_loaded ? "Unload" : swapping ? "Swap" : "Load");
+  set_btn_label(edit_load_btn, slot.tool_loaded ? ::tr("Unload") : swapping ? ::tr("Swap") : ::tr("Load"));
   set_action_btn(edit_load_btn,
                  slot.tool_loaded ? backend != NULL && backend->can_unload()
                                   : backend != NULL && backend->can_load(edit_slot_idx),
@@ -1349,7 +1351,7 @@ lv_obj_t *create_slot_tile(lv_obj_t *parent, const MmuSlot &l, size_t idx, int w
   lv_label_set_long_mode(mat, LV_LABEL_LONG_DOT);
   lv_obj_set_width(mat, LV_PCT(100));
   lv_obj_set_style_text_align(mat, LV_TEXT_ALIGN_CENTER, 0);
-  lv_label_set_text(mat, l.material.empty() ? "Empty" : l.material.c_str());
+  lv_label_set_text(mat, l.material.empty() ? ::tr("Empty") : l.material.c_str());
   lv_obj_add_style(mat, &styles().dim_label, 0);
   lv_obj_clear_flag(mat, LV_OBJ_FLAG_CLICKABLE);
   return b;
@@ -1378,7 +1380,7 @@ void MmuPanel::open_backup_picker() {
   int tile_w = (popout_row_w() - (cols - 1) * gap()) / cols;
 
   lv_obj_t *title = lv_label_create(backup_picker_list);
-  lv_label_set_text(title, fmt::format("{} backs up:", slot_label(editing, edit_slot_idx)).c_str());
+  lv_label_set_text(title, fmt::format(fmt::runtime(::tr("{} backs up:")), slot_label(editing, edit_slot_idx)).c_str());
   lv_obj_set_width(title, LV_PCT(100));
   lv_obj_set_style_text_font(title, scale_font(14), 0);
 
@@ -1392,7 +1394,7 @@ void MmuPanel::open_backup_picker() {
     backup_pick_names.push_back(l.name);
   }
 
-  lv_obj_t *cancel = create_text_btn(backup_picker_list, "Cancel",
+  lv_obj_t *cancel = create_text_btn(backup_picker_list, ::tr("Cancel"),
                                      &MmuPanel::_handle_edit_action, this);
   lv_obj_set_size(cancel, LV_PCT(100), scale_r(40));
   lv_obj_set_style_bg_color(cancel, theme_primary(), LV_STATE_PRESSED);
@@ -1441,13 +1443,13 @@ void MmuPanel::open_colour_picker() {
     lv_obj_clear_flag(colour_pick_preview, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *sat_lbl = lv_label_create(right);
-    lv_label_set_text(sat_lbl, "SATURATION:");
+    lv_label_set_text(sat_lbl, ::tr("SATURATION:"));
     lv_obj_add_style(sat_lbl, &styles().dim_label, 0);
 
     colour_sat_slider = lv_slider_create(right);
 
     lv_obj_t *val_lbl = lv_label_create(right);
-    lv_label_set_text(val_lbl, "BRIGHTNESS:");
+    lv_label_set_text(val_lbl, ::tr("BRIGHTNESS:"));
     lv_obj_add_style(val_lbl, &styles().dim_label, 0);
 
     colour_val_slider = lv_slider_create(right);
@@ -1473,12 +1475,12 @@ void MmuPanel::open_colour_picker() {
     lv_obj_set_size(btn_row, LV_PCT(100), scale_r(40));
     lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
 
-    colour_pick_ok = create_text_btn(btn_row, "Save", &MmuPanel::_handle_edit_action, this);
+    colour_pick_ok = create_text_btn(btn_row, ::tr("Save"), &MmuPanel::_handle_edit_action, this);
     lv_obj_set_height(colour_pick_ok, LV_PCT(100));
     lv_obj_set_flex_grow(colour_pick_ok, 1);
     lv_obj_set_style_bg_color(colour_pick_ok, theme_primary(), 0);
 
-    colour_pick_cancel = create_text_btn(btn_row, "Cancel", &MmuPanel::_handle_edit_action, this);
+    colour_pick_cancel = create_text_btn(btn_row, ::tr("Cancel"), &MmuPanel::_handle_edit_action, this);
     lv_obj_set_height(colour_pick_cancel, LV_PCT(100));
     lv_obj_set_flex_grow(colour_pick_cancel, 1);
   }
@@ -1518,7 +1520,7 @@ void MmuPanel::open_material_picker() {
     lv_obj_set_flex_flow(material_picker_list, LV_FLEX_FLOW_ROW_WRAP);
 
     lv_obj_t *title = lv_label_create(material_picker_list);
-    lv_label_set_text(title, "Material:");
+    lv_label_set_text(title, ::tr("Material:"));
     lv_obj_set_width(title, LV_PCT(100));
     lv_obj_set_style_text_font(title, scale_font(14), 0);
 
@@ -1534,7 +1536,7 @@ void MmuPanel::open_material_picker() {
       mat_pick_btns.push_back(b);
     }
 
-    lv_obj_t *cancel = create_text_btn(material_picker_list, "Cancel",
+    lv_obj_t *cancel = create_text_btn(material_picker_list, ::tr("Cancel"),
                                        &MmuPanel::_handle_edit_action, this);
     lv_obj_set_size(cancel, LV_PCT(100), scale_r(40));
     mat_pick_btns.push_back(cancel); // last tile, no material of its own
