@@ -1,4 +1,5 @@
 #include "extruder_panel.h"
+#include "i18n.h"
 #include "state.h"
 #include "config.h"
 #include "logger.h"
@@ -109,22 +110,22 @@ ExtruderPanel::ExtruderPanel(KWebSocketClient &websocket_client,
   , speed_options(load_selector_options("/ui/extruder_speed_presets", 8))
   , speed_option_map(build_selector_map(speed_options))
   , speed_default_idx(resolve_default_idx("/ui/extruder_speed_default", speed_options))
-  , extruder_temp(ws, panel_cont, Icons::EXTRUDER, "Extruder", theme_secondary(), false, true, numpad,
+  , extruder_temp(ws, panel_cont, Icons::EXTRUDER, ::tr("Extruder"), theme_secondary(), false, true, numpad,
                   "extruder", NULL, NULL)
-  , temp_selector(panel_cont, "Extruder Temperature (C)",
+  , temp_selector(panel_cont, ::tr("Extruder Temperature (C)"),
 		  temp_option_map, temp_default_idx, &ExtruderPanel::_handle_callback, this)
-  , length_selector(panel_cont, "Extrude Length (mm)",
+  , length_selector(panel_cont, ::tr("Extrude Length (mm)"),
 		    length_option_map, length_default_idx, &ExtruderPanel::_handle_callback, this)
-  , speed_selector(panel_cont, "Extrude Speed (mm/s)",
+  , speed_selector(panel_cont, ::tr("Extrude Speed (mm/s)"),
 		   speed_option_map, speed_default_idx, &ExtruderPanel::_handle_callback, this)
-  , load_btn(panel_cont, Icons::LOAD_FILAMENT_IMG, "Load", &ExtruderPanel::_handle_callback, this)
-  , unload_btn(panel_cont, Icons::UNLOAD_FILAMENT_IMG, "Unload", &ExtruderPanel::_handle_callback, this)
-  , cooldown_btn(panel_cont, Icons::COOLDOWN_IMG, "Cooldown", &ExtruderPanel::_handle_callback, this)
+  , load_btn(panel_cont, Icons::LOAD_FILAMENT_IMG, ::tr("Load"), &ExtruderPanel::_handle_callback, this)
+  , unload_btn(panel_cont, Icons::UNLOAD_FILAMENT_IMG, ::tr("Unload"), &ExtruderPanel::_handle_callback, this)
+  , cooldown_btn(panel_cont, Icons::COOLDOWN_IMG, ::tr("Cooldown"), &ExtruderPanel::_handle_callback, this)
   , right_col(create_row(panel_cont))
   , spoolman_btn(right_col, Icons::SPOOLMAN_IMG, "Spoolman", &ExtruderPanel::_handle_callback, this)
-  , extrude_btn(right_col, Icons::EXTRUDE_IMG, "Extrude", &ExtruderPanel::_handle_callback, this)
-  , retract_btn(right_col, Icons::RETRACT_IMG, "Retract", &ExtruderPanel::_handle_callback, this)
-  , back_btn(right_col, Icons::BACK, "Back", &ExtruderPanel::_handle_callback, this)
+  , extrude_btn(right_col, Icons::EXTRUDE_IMG, ::tr("Extrude"), &ExtruderPanel::_handle_callback, this)
+  , retract_btn(right_col, Icons::RETRACT_IMG, ::tr("Retract"), &ExtruderPanel::_handle_callback, this)
+  , back_btn(right_col, Icons::BACK, ::tr("Back"), &ExtruderPanel::_handle_callback, this)
 {
   lv_obj_move_background(panel_cont);
 
@@ -235,7 +236,7 @@ void ExtruderPanel::refresh_extruders() {
     const std::string &name = extruders[i];
     options += (i ? "\n" : "") + fmt::format("T{}  ({})", extruder_index(name), name);
     if (i == 0) continue;
-    auto label = fmt::format("Extruder {}", extruder_index(name));
+    auto label = fmt::format(fmt::runtime(::tr("Extruder {}")), extruder_index(name));
     auto sensor = std::make_unique<SensorContainer>(ws, panel_cont, Icons::EXTRUDER, label.c_str(),
                                                     theme_secondary(), false, true, numpad, name, nullptr, nullptr);
     json temp = status.is_object() ? status[json::json_pointer("/" + name + "/temperature")] : json();
