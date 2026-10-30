@@ -79,6 +79,8 @@ class PromptPanel : public NotifyConsumer {
         std::string numpad_cmd;
         bool prompt_shown = false;
         lv_obj_t *error_label = NULL;
+        // a klipper error shown while no prompt is up
+        lv_obj_t *error_dialog = NULL;
 
 };
 
