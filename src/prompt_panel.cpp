@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "logger.h"
 #include "theme.h"
+#include "simple_dialog.h"
 
 using namespace Theme;
 
@@ -529,6 +530,22 @@ void PromptPanel::handle_macro_response(json &j) {
       }
       lv_label_set_text(error_label, resp.substr(3).c_str());
       fit_box();
+      return;
+    }
+
+    // any other klipper error (a door opened during a print, a failed
+    // command) pops up on its own, a newer one replacing the one showing
+    if (resp.find("!! ", 0) == 0) {
+      if (error_dialog != NULL) {
+        simple_dialog_close(error_dialog);
+      }
+      error_dialog = create_simple_dialog(lv_layer_top(), "Error", resp.substr(3).c_str(), true, true);
+      lv_obj_add_event_cb(error_dialog, [](lv_event_t *e) {
+        PromptPanel *panel = (PromptPanel*)e->user_data;
+        if (panel->error_dialog == lv_event_get_target(e)) {
+          panel->error_dialog = NULL;
+        }
+      }, LV_EVENT_DELETE, this);
       return;
     }
 
