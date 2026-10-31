@@ -5,7 +5,6 @@
 #include "utils.h"
 #include "logger.h"
 #include "theme.h"
-#include "simple_dialog.h"
 
 using namespace Theme;
 
@@ -534,18 +533,32 @@ void PromptPanel::handle_macro_response(json &j) {
     }
 
     // any other klipper error (a door opened during a print, a failed
-    // command) pops up on its own, a newer one replacing the one showing
+    // command) shows in a banner over the top of the screen, a newer one
+    // replacing the one showing. The screen below stays usable.
     if (resp.find("!! ", 0) == 0) {
-      if (error_dialog != NULL) {
-        simple_dialog_close(error_dialog);
+      if (error_banner == NULL) {
+        error_banner = lv_obj_create(lv_layer_top());
+        lv_obj_set_size(error_banner, lv_pct(96), LV_SIZE_CONTENT);
+        lv_obj_align(error_banner, LV_ALIGN_TOP_MID, 0, scale_r(4));
+        lv_obj_set_style_bg_color(error_banner, col(DANGER), 0);
+        lv_obj_set_style_border_width(error_banner, 0, 0);
+        lv_obj_set_style_radius(error_banner, scale_r(8), 0);
+        lv_obj_set_style_pad_hor(error_banner, scale_r(12), 0);
+        lv_obj_set_style_pad_ver(error_banner, scale_r(8), 0);
+        lv_obj_clear_flag(error_banner, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(error_banner, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(error_banner, [](lv_event_t *e) {
+          PromptPanel *panel = (PromptPanel*)e->user_data;
+          lv_obj_del_async(panel->error_banner);
+          panel->error_banner = NULL;
+        }, LV_EVENT_CLICKED, this);
+
+        lv_obj_t *label = lv_label_create(error_banner);
+        lv_obj_set_width(label, lv_pct(100));
+        lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
       }
-      error_dialog = create_simple_dialog(lv_layer_top(), "Error", resp.substr(3).c_str(), true, true);
-      lv_obj_add_event_cb(error_dialog, [](lv_event_t *e) {
-        PromptPanel *panel = (PromptPanel*)e->user_data;
-        if (panel->error_dialog == lv_event_get_target(e)) {
-          panel->error_dialog = NULL;
-        }
-      }, LV_EVENT_DELETE, this);
+      lv_label_set_text(lv_obj_get_child(error_banner, 0),
+                        fmt::format("{} - Tap to dismiss", resp.substr(3)).c_str());
       return;
     }
 
