@@ -35,6 +35,8 @@ class SliderContainer {
 
   ~SliderContainer();
   lv_obj_t *get_container();
+  // shows the value only: the off button's icon, grayed out, and no controls
+  void set_read_only();
   // the row height the panel gives it; Off and Max fill that height
   void set_height(lv_coord_t h);
   // how tall a row should be in a column of n rows beside three side tiles: one
@@ -66,6 +68,7 @@ class SliderContainer {
   lv_obj_t *slider_value;
   ButtonContainer max_btn;
   std::string unit;
+  bool read_only = false;
 };
 
 #endif // __SLIDER_CONTAINER_H__

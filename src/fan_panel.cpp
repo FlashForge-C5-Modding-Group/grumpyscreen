@@ -80,9 +80,13 @@ void FanPanel::create_fans(json &f) {
       // generic_fan, controller_fan, etc.
       fan_cb = &FanPanel::_handle_fan_update_generic;
     }
+    const bool read_only = is_read_only(key);
     // a row is as tall as its controls: rows start at the top, one gap apart
-    fans.insert({key, std::make_shared<SliderContainer>(fans_cont, display_name.c_str(), Icons::CANCEL, "Off",
-						  Icons::FAN_ON, "Max", fan_cb, this, "%")});
+    auto row = std::make_shared<SliderContainer>(fans_cont, display_name.c_str(),
+                                                 read_only ? Icons::FAN : Icons::CANCEL, "Off",
+                                                 Icons::FAN_ON, "Max", fan_cb, this, "%");
+    if (read_only) row->set_read_only();
+    fans.insert({key, row});
   }
 
   // Any number of rows, any screen size: build them, then let the scroller
@@ -124,6 +128,7 @@ void FanPanel::handle_callback(lv_event_t *event) {
   } else if (btn == all_off_btn.get_container() || btn == all_on_btn.get_container()) {
     const bool on = btn == all_on_btn.get_container();
     for (auto &f : fans) {
+      if (is_read_only(f.first)) continue;
       ws.gcode_script(fan_gcode(f.first, on ? 1.0 : 0.0));
       f.second->update_value(on ? 100 : 0);
     }
@@ -131,6 +136,12 @@ void FanPanel::handle_callback(lv_event_t *event) {
   else {
     LOG_DEBUG("Unknown action button pressed");
   }
+}
+
+bool FanPanel::is_read_only(const std::string &key) {
+  return key.rfind("heater_fan ", 0) == 0
+      || key.rfind("controller_fan ", 0) == 0
+      || key.rfind("temperature_fan ", 0) == 0;
 }
 
 std::string FanPanel::fan_gcode(const std::string &key, double fraction) {

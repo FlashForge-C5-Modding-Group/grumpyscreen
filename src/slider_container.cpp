@@ -108,6 +108,14 @@ lv_obj_t *SliderContainer::get_container() {
   return cont;
 }
 
+void SliderContainer::set_read_only() {
+  read_only = true;
+  lv_obj_add_flag(slider, LV_OBJ_FLAG_HIDDEN);
+  max_btn.hide();
+  off_btn.hide_label();
+  off_btn.disable();
+}
+
 lv_coord_t SliderContainer::row_height(int n) {
   const int col_h = lv_disp_get_physical_ver_res(NULL) - 2 * gap();  // a screen root's content height
   return (n == 2 || n == 3) ? (col_h - (n - 1) * gap()) / n : (col_h - 2 * gap()) / 3;
@@ -139,7 +147,7 @@ void SliderContainer::set_range(int min_range, int max_range) {
 
 void SliderContainer::update_value(int value) {
   // no slider means a plain switch: a percentage would be a lie
-  if (lv_obj_has_flag(slider, LV_OBJ_FLAG_HIDDEN)) {
+  if (lv_obj_has_flag(slider, LV_OBJ_FLAG_HIDDEN) && !read_only) {
     lv_label_set_text(slider_value, value > 0 ? "On" : "Off");
   } else {
     lv_label_set_text(slider_value, fmt::format("{}{}", value, unit).c_str());
