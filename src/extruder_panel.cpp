@@ -277,7 +277,7 @@ void ExtruderPanel::set_active_extruder(const std::string &name) {
   if (name.empty() || name == active_extruder) return;
   active_extruder = name;
   const std::string label = extruders.size() > 1
-      ? fmt::format("Extruder T{}", extruder_tool(name)) : "Extruder";
+      ? fmt::format(I18n::tr("Extruder T{}"), extruder_tool(name)) : "Extruder";
   extruder_temp.set_id(name, label.c_str());
   json &state = State::get_instance()->get_data(json::json_pointer("/printer_state/" + name));
   if (state.is_object()) {

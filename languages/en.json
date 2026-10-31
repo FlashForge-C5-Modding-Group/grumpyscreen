@@ -19,6 +19,8 @@
   "Exclude": "Exclude",
   "Exclude Object": "Exclude Object",
   "Extruder": "Extruder",
+  "Extruder T{}": "Extruder T{}",
+  "{} - Tap to dismiss": "{} - Tap to dismiss",
   "Load / Unload": "Load / Unload",
   "Extrude / Retract": "Extrude / Retract",
   "Extruder Temperature (C)": "Extruder Temperature (C)",

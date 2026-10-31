@@ -558,7 +558,7 @@ void PromptPanel::handle_macro_response(json &j) {
         lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
       }
       lv_label_set_text(lv_obj_get_child(error_banner, 0),
-                        fmt::format("{} - Tap to dismiss", resp.substr(3)).c_str());
+                        fmt::format(I18n::tr("{} - Tap to dismiss"), resp.substr(3)).c_str());
       return;
     }
 
