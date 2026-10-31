@@ -207,7 +207,7 @@ $(WPA_CLIENT_A): $(WPA_CLIENT_INPUTS)
 	@mkdir -p $(DEPS_LIB_DIR)
 	@cp wpa_supplicant/wpa_supplicant/libwpa_client.a $(WPA_CLIENT_A)
 
-$(BUILD_OBJ_DIR)/%.o: %.cpp | $(LIBHV_A)
+$(BUILD_OBJ_DIR)/%.o: %.cpp src/i18n_hooks.h | $(LIBHV_A)
 	@mkdir -p $(dir $@)
 	@$(COMPILE_CXX) -std=c++17 $(CFLAGS) -c $< -o $@
 	@echo "CXX $<"
