@@ -1,207 +1,35 @@
-name: branch build
+name: GrumpyScreen Build
 
 on:
-  pull_request:
+  workflow_dispatch:
   push:
-    branches:
-      - main
-
-permissions:
-  contents: read
+    branches: [ main ]
 
 jobs:
-  compile:
-    if: github.event_name == 'pull_request'
-    strategy:
-      matrix:
-        include:
-          - arch: mipsel-buildroot-linux-musl-
-            small: false
-            calibrate: false
-            build_dir: build/mips
-
-          - arch: mipsel-buildroot-linux-musl-
-            small: true
-            calibrate: true
-            build_dir: build/mips-small
-
-          - arch: armv8-rpi3-linux-gnueabihf-
-            small: false
-            calibrate: true
-            build_dir: build/rpi
-
-    runs-on: ubuntu-22.04
-    container:
-      image: pellcorp/grumpydev:latest
-      options: --user 1001
-
-    env:
-      CROSS_COMPILE: ${{ matrix.arch }}
-      CC: ${{ matrix.arch }}
-      CXX: ${{ matrix.arch }}
-      BUILD_DIR: ${{ matrix.build_dir }}
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        submodules: recursive
-        fetch-depth: 0
-
-    - name: set grumpyscreen version
-      run: |
-        BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-        VERSION="v2.0.0-$(git rev-list --count 2.0.0..${{ github.sha }})"
-        echo "GUPPYSCREEN_BRANCH=$BRANCH" >> $GITHUB_ENV
-        echo "GUPPYSCREEN_VERSION=$VERSION" >> $GITHUB_ENV
-        echo "Building branch $BRANCH, version $VERSION"
-
-    - if: matrix.small
-      name: export screen size
-      run: |
-        echo "GUPPY_SMALL_SCREEN=${{ matrix.small }}" >> $GITHUB_ENV
-
-    - if: matrix.calibrate
-      name: export touch calibrate
-      run: |
-        echo "GUPPY_CALIBRATE=${{ matrix.calibrate }}" >> $GITHUB_ENV
-
-    - name: make wpaclient
-      run: make wpaclient
-
-    - name: make libhv
-      run: make libhv.a
-
-    - name: make grumpyscreen
-      run: make -j
-
-  release:
-    if: github.event_name == 'push'
-    permissions:
-      contents: write
-    strategy:
-      matrix:
-        include:
-          - arch: mipsel-buildroot-linux-musl-
-            small: false
-            asset: grumpyscreen
-            calibrate: false
-            build_dir: build/mips
-
-          - arch: mipsel-buildroot-linux-musl-
-            small: true
-            asset: grumpyscreen-smallscreen
-            calibrate: true
-            build_dir: build/mips-small
-
-          - arch: armv8-rpi3-linux-gnueabihf-
-            small: false
-            calibrate: true
-            asset: grumpyscreen-rpi
-            build_dir: build/rpi
-
-    runs-on: ubuntu-22.04
-    container:
-      image: pellcorp/grumpydev:latest
-      options: --user 1001
-
-    env:
-      CROSS_COMPILE: ${{ matrix.arch }}
-      CC: ${{ matrix.arch }}
-      CXX: ${{ matrix.arch }}
-      BUILD_DIR: ${{ matrix.build_dir }}
-
-    steps:
-    - uses: actions/checkout@v6
-      with:
-        submodules: recursive
-        fetch-depth: 0
-
-    - name: set grumpyscreen version
-      run: |
-        BRANCH="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-        VERSION="v2.0.0-$(git rev-list --count 2.0.0..${{ github.sha }})"
-        echo "GUPPYSCREEN_BRANCH=$BRANCH" >> $GITHUB_ENV
-        echo "GUPPYSCREEN_VERSION=$VERSION" >> $GITHUB_ENV
-        echo "Building branch $BRANCH, version $VERSION"
-
-    - if: matrix.small
-      name: export screen size
-      run: |
-        echo "GUPPY_SMALL_SCREEN=${{ matrix.small }}" >> $GITHUB_ENV
-
-    - if: matrix.calibrate
-      name: export touch calibrate
-      run: |
-        echo "GUPPY_CALIBRATE=${{ matrix.calibrate }}" >> $GITHUB_ENV
-
-    - name: make wpaclient
-      run: make wpaclient
-
-    - name: make libhv
-      run: make libhv.a
-
-    - name: make grumpyscreen
-      run: make -j
-
-    - name: package release
-      run: |
-        chmod +x ./release.sh
-        ./release.sh ${{ matrix.asset }} ${{ matrix.build_dir }}
-
-    - uses: actions/upload-artifact@v7
-      with:
-        name: ${{ matrix.asset }}
-        path: ./${{ matrix.asset }}.tar.gz
-
-    - name: branch release
-      uses: softprops/action-gh-release@v3
-      with:
-        name: ${{ github.ref_name }}
-        tag_name: ${{ github.ref_name }}
-        files: |
-          ${{ matrix.asset }}.tar.gz
-        fail_on_unmatched_files: true
-
-  # versioned zip releases with release_info.json, so moonraker's update manager can update grumpyscreen
-  zip-release:
-    if: github.event_name == 'push'
-    needs: release
-    permissions:
-      contents: write
+  build:
     runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - uses: actions/download-artifact@v7
-      with:
-        path: artifacts
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang cmake git \
+            libssl-dev libcurl4-openssl-dev libfmt-dev
 
-    - name: package zips
-      run: |
-        VERSION="v2.0.0-$(git rev-list --count 2.0.0..${{ github.sha }})"
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        for asset in grumpyscreen grumpyscreen-smallscreen grumpyscreen-rpi; do
-          mkdir -p "unpack/$asset"
-          tar xzf "artifacts/$asset/$asset.tar.gz" -C "unpack/$asset"
-          cd "unpack/$asset/grumpyscreen"
-          printf '{"project_name": "grumpyscreen", "project_owner": "pellcorp", "version": "%s", "asset_name": "%s.zip"}\n' "$VERSION" "$asset" > release_info.json
-          zip -r "$GITHUB_WORKSPACE/$asset.zip" .
-          cd "$GITHUB_WORKSPACE"
-        done
+      - name: Build
+        run: |
+          make -j$(nproc)
 
-    - name: versioned release
-      uses: softprops/action-gh-release@v3
-      with:
-        name: ${{ env.VERSION }}
-        tag_name: ${{ env.VERSION }}
-        target_commitish: ${{ github.sha }}
-        make_latest: true
-        generate_release_notes: true
-        files: |
-          grumpyscreen.zip
-          grumpyscreen-smallscreen.zip
-          grumpyscreen-rpi.zip
-        fail_on_unmatched_files: true
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: grumpyscreen-build
+          path: |
+            build/
+            release/
+          if-no-files-found: warn
