@@ -45,6 +45,7 @@ class SliderContainer {
   lv_obj_t *get_max();
 
   void set_range(int min_range, int max_range);
+  void set_read_only();
 
   void update_value(int value);
 
