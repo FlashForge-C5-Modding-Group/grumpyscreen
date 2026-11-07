@@ -81,8 +81,20 @@ void FanPanel::create_fans(json &f) {
       fan_cb = &FanPanel::_handle_fan_update_generic;
     }
     // a row is as tall as its controls: rows start at the top, one gap apart
-    fans.insert({key, std::make_shared<SliderContainer>(fans_cont, display_name.c_str(), Icons::CANCEL, "Off",
-						  Icons::FAN_ON, "Max", fan_cb, this, "%")});
+    auto slider = std::make_shared<SliderContainer>(
+        fans_cont, display_name.c_str(),
+        Icons::CANCEL, "Off",
+        Icons::FAN_ON, "Max",
+        fan_cb, this, "%"
+    );
+
+    // Ventole automatiche: sola visualizzazione.
+    if (key.rfind("heater_fan ", 0) == 0 ||
+        key.rfind("controller_fan ", 0) == 0) {
+      slider->set_read_only();
+    }
+
+    fans.insert({key, slider});
   }
 
   // Any number of rows, any screen size: build them, then let the scroller
@@ -124,6 +136,12 @@ void FanPanel::handle_callback(lv_event_t *event) {
   } else if (btn == all_off_btn.get_container() || btn == all_on_btn.get_container()) {
     const bool on = btn == all_on_btn.get_container();
     for (auto &f : fans) {
+      // Le ventole automatiche non devono essere comandate dal pannello globale.
+      if (f.first.rfind("heater_fan ", 0) == 0 ||
+          f.first.rfind("controller_fan ", 0) == 0) {
+        continue;
+      }
+
       ws.gcode_script(fan_gcode(f.first, on ? 1.0 : 0.0));
       f.second->update_value(on ? 100 : 0);
     }

@@ -137,6 +137,22 @@ void SliderContainer::set_range(int min_range, int max_range) {
   lv_slider_set_range(slider, min_range, max_range);
 }
 
+void SliderContainer::set_read_only() {
+  // Pulsanti visibili, grigi e non interattivi.
+  off_btn.show();
+  max_btn.show();
+  off_btn.disable();
+  max_btn.disable();
+
+  lv_obj_clear_flag(off_btn.get_container(), LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(max_btn.get_container(), LV_OBJ_FLAG_CLICKABLE);
+
+  // Slider visibile, disabilitato ma aggiornabile da Moonraker.
+  lv_obj_clear_flag(slider, LV_OBJ_FLAG_HIDDEN);
+  lv_obj_clear_flag(slider, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_state(slider, LV_STATE_DISABLED);
+}
+
 void SliderContainer::update_value(int value) {
   // no slider means a plain switch: a percentage would be a lie
   if (lv_obj_has_flag(slider, LV_OBJ_FLAG_HIDDEN)) {
