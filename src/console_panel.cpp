@@ -1,14 +1,17 @@
 #include "console_panel.h"
+#include "console_colour.h"
 #include "config.h"
 #include "state.h"
 #include "logger.h"
 #include "klipper_temp_filter.h"
 #include "icons.h"
 #include "theme.h"
+#include "platform.h"
 
 using namespace Theme;
 
 #include <algorithm>
+#include <cstdio>
 #include <cctype>
 
 LV_FONT_DECLARE(dejavusans_mono_14);
@@ -36,9 +39,18 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   // entry. The mono face is the one fixed-width font compiled in and has no
   // scaled sizes, so it is the one unscaled font in the UI, worn by the log only.
   lv_obj_add_style(output, &styles().panel, 0);
+#ifdef OS_ANDROID
+  // a phone is far denser than 800x480: the app has the mono face in sizes
+  lv_obj_set_style_text_font(output, android_console_font(), 0);
+#else
   lv_obj_set_style_text_font(output, &dejavusans_mono_14, 0);
+#endif
   lv_obj_set_size(output, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_border_width(output, 0, LV_STATE_FOCUSED | LV_PART_CURSOR);
+  // each line coloured by what it is (see colourize); the log's label reads the
+  // #rrggbb ...# colour commands
+  colours = Config::get_instance()->get<bool>("/ui/console_colors", true);
+  lv_label_set_recolor(lv_textarea_get_label(output), colours);
 
   // A gcode entry line under the log, beside the clear tile; the keyboard
   // slides over the log while the line has focus and sends on enter. The entry
@@ -90,15 +102,17 @@ ConsolePanel::ConsolePanel(KWebSocketClient &websocket_client, std::mutex &lock,
   macro_panel = std::make_unique<MacroPanel>(macro_tab,
       [this](const std::string &gcode) {
         lv_tabview_set_act(tabview, lv_obj_get_index(console_cont), LV_ANIM_OFF);
-        this->send_gcode(gcode);
+        ws.gcode_script(gcode);
       });
 
+  ws.set_gcode_sent_callback([this](const std::string &gcode) { append_gcode(gcode); });
   ws.register_method_callback("notify_gcode_response",
 			      "ConsolePanel",
 			      [this](json& d) { this->handle_macro_response(d); });
 }
 
 ConsolePanel::~ConsolePanel() {
+  ws.set_gcode_sent_callback({});
   lv_obj_del(tabview);
 }
 
@@ -176,8 +190,33 @@ void ta_add_text_limit_lines(lv_obj_t * ta, const std::string &line) {
   lv_textarea_set_cursor_pos(ta, LV_TEXTAREA_CURSOR_LAST);
 }
 
+static std::string hex_colour(lv_color_t c) {
+  lv_color32_t c32;
+  c32.full = lv_color_to32(c);
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%02x%02x%02x", c32.ch.red, c32.ch.green, c32.ch.blue);
+  return buf;
+}
+
+// errors, what was sent, the prompt protocol's own lines, echo output and
+// warnings, in the theme's colours
+std::string ConsolePanel::colourize(const std::string &text) const {
+  return colourize_console(text, [](ConsoleLine kind) -> std::string {
+    switch (kind) {
+      case ConsoleLine::ERROR: return hex_colour(col(DANGER));
+      case ConsoleLine::SENT: return hex_colour(theme_primary());
+      case ConsoleLine::PROMPT: return hex_colour(col(TEXT_DIM));
+      case ConsoleLine::ECHO: return hex_colour(col(SUCCESS));
+      case ConsoleLine::WARNING: return hex_colour(col(WARNING));
+      case ConsoleLine::INFO: return hex_colour(col(INFO));
+      case ConsoleLine::SECONDARY: return hex_colour(theme_secondary());
+      default: return "";
+    }
+  }, colours);
+}
+
 void ConsolePanel::append_output(const std::string &text) {
-  if (!text.empty()) ta_add_text_limit_lines(output, text);
+  if (!text.empty()) ta_add_text_limit_lines(output, colourize(text));
 }
 
 void ConsolePanel::handle_macro_response(json &j) {
@@ -198,10 +237,19 @@ void ConsolePanel::handle_macro_response(json &j) {
   }
 }
 
-void ConsolePanel::send_gcode(const std::string &gcode) {
-  // klipper does not echo commands, so show what was sent
-  append_output("> " + gcode);
-  ws.gcode_script(gcode);
+void ConsolePanel::append_gcode(const std::string &gcode) {
+  // Klipper does not echo commands. Mark every line of a script as sent,
+  // without changing the active panel or tab.
+  std::string text;
+  size_t start = 0;
+  while (start < gcode.size()) {
+    const size_t end = gcode.find('\n', start);
+    if (!text.empty()) text += '\n';
+    text += "> " + gcode.substr(start, end == std::string::npos ? end : end - start);
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+  append_output(text);
 }
 
 void ConsolePanel::handle_input(lv_event_t *e) {
@@ -221,7 +269,7 @@ void ConsolePanel::handle_input(lv_event_t *e) {
   if (code == LV_EVENT_READY) {
     const char *text = lv_textarea_get_text(input);
     if (text != NULL && text[0] != '\0') {
-      send_gcode(text);
+      ws.gcode_script(text);
       lv_textarea_set_text(input, "");
     }
   }

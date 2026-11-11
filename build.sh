@@ -46,6 +46,29 @@ function docker_make() {
     docker run --name=grumpydev --rm --entrypoint /bin/bash -v $PWD:$PWD pellcorp/grumpydev -c "cd $PWD && $MISC_ARGS GUPPYSCREEN_VERSION=${GIT_REVISION} GUPPYSCREEN_BRANCH=$GIT_BRANCH make -j $makefile_arg $@"
 }
 
+# The Android app builds with Gradle in the grumpydev container, which has the
+# JDK and Android SDK; see android/README.md. It runs as the caller, so the
+# files it writes are theirs, and keeps Gradle's caches and the debug signing
+# key in android/ between runs.
+if [ "$1" = "android" ]; then
+    shift
+    DOCKER_ARGS=(--rm --user "$(id -u):$(id -g)" -v "$CURRENT_DIR:$CURRENT_DIR"
+                 -e HOME=/tmp
+                 -e GRADLE_USER_HOME="$CURRENT_DIR/android/.gradle-home"
+                 -e ANDROID_USER_HOME="$CURRENT_DIR/android/.android-home"
+                 -e GUPPYSCREEN_VERSION="${GUPPYSCREEN_VERSION:-$GIT_REVISION}"
+                 -e GUPPYSCREEN_BRANCH="${GUPPYSCREEN_BRANCH:-$GIT_BRANCH}"
+                 -e KEYSTORE -e KEYSTORE_PASSWORD -e KEY_ALIAS -e KEY_PASSWORD)
+    # Android Studio's local.properties names the host's SDK; use the image's
+    if [ -f "$CURRENT_DIR/android/local.properties" ]; then
+      DOCKER_ARGS+=(--mount "type=bind,src=/dev/null,dst=$CURRENT_DIR/android/local.properties,readonly")
+    fi
+    docker run "${DOCKER_ARGS[@]}" --entrypoint /bin/bash pellcorp/grumpydev \
+      -c "cd '$CURRENT_DIR/android' && ./gradlew --no-daemon assembleRelease $*" || exit $?
+    echo "APK: android/app/build/outputs/apk/release/app-release.apk"
+    exit 0
+fi
+
 TARGET=
 GUPPY_SMALL_SCREEN=false
 COSMOS=false
@@ -204,7 +227,6 @@ if [ -n "$PRINTER_IP" ] && [ -f "$BUILD_DIR/bin/grumpyscreen" ] && { [ "$TARGET_
     cp grumpyscreen.cfg /tmp
     scp "$BUILD_DIR/bin/grumpyscreen" $PI_USERNAME@$PRINTER_IP:/tmp/
     sed -i 's:/etc/init.d/S99grumpyscreen restart:sudo systemctl restart grumpyscreen:g' /tmp/grumpyscreen.cfg
-    sed -i 's:/etc/init.d/S55klipper_service restart:sudo systemctl restart klipper:g' /tmp/grumpyscreen.cfg
     sed -i 's:/usr/data/pellcorp/tools/support.sh:/home/$PI_USERNAME/pellcorp/tools/support.sh:g' /tmp/grumpyscreen.cfg
     sed -i 's:/sbin/halt:sudo systemctl poweroff:g' /tmp/grumpyscreen.cfg
 

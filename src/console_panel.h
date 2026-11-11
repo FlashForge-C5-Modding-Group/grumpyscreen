@@ -23,7 +23,6 @@ class ConsolePanel {
   void handle_macro_response(json &d);
   void handle_delete_btn(lv_event_t *event);
   void handle_input(lv_event_t *event);
-  void send_gcode(const std::string &gcode);
 
   static void _handle_delete_btn(lv_event_t *event) {
     ConsolePanel *panel = (ConsolePanel*)event->user_data;
@@ -35,6 +34,8 @@ class ConsolePanel {
   };
 
  private:
+  void append_gcode(const std::string &gcode);
+  std::string colourize(const std::string &text) const;
   KWebSocketClient &ws;
   std::mutex &lv_lock;
   // Console and Macros tabs
@@ -50,6 +51,7 @@ class ConsolePanel {
   ButtonContainer delete_btn;
   std::unique_ptr<MacroPanel> macro_panel;
   bool gcode_input_enabled = false;
+  bool colours = true;
 };
 
 #endif // __CONSOLE_PANEL_H__

@@ -34,12 +34,14 @@ static int display_sleep_index(int32_t seconds) {
   return -1;
 }
 
+#ifndef OS_ANDROID
 static WifiPanelOptions embedded_wifi_options(lv_obj_t *parent) {
   WifiPanelOptions opts;
   opts.parent = parent;
   opts.flush = true;
   return opts;
 }
+#endif
 
 static int call_command(const std::string &cmd) {
     try {
@@ -112,11 +114,15 @@ static lv_obj_t *add_about_line(lv_obj_t *parent, const std::string &text, bool 
 
 SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   : ws(c)
+  , lv_lock(l)
   , owns_cont(parent == nullptr)
   , cont(Theme::create_screen(parent))  // fills the tab: it is the page
   , tabview(lv_tabview_create(cont, LV_DIR_TOP, Theme::scale_r(36)))
   , actions_tab(lv_tabview_add_tab(tabview, "Tools"))
+#ifndef OS_ANDROID
+  // (Android manages the device's wifi itself: no Network tab there)
   , wifi_tab(lv_tabview_add_tab(tabview, "Network"))
+#endif
   , settings_tab(lv_tabview_add_tab(tabview, "Settings"))
   , about_tab(lv_tabview_add_tab(tabview, "About"))
   , actions_cont(Theme::create_screen(actions_tab))
@@ -128,38 +134,48 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
 #ifndef COSMOS
   , language_selector(nullptr)
 #endif
+  , sleep_timeout_warning(nullptr)
 #ifdef COSMOS
   , update_manager(c, l)
 #endif
+#ifndef OS_ANDROID
   , wifi_panel(l, embedded_wifi_options(wifi_tab))
+#endif
   , restart_klipper_btn(actions_cont, Icons::RESTART_IMG, "Restart\nKlipper", &SettingPanel::_handle_callback, this,
         "Restart Klipper", "Do you want to restart klipper?", {"Back", "Restart Klipper"})
   , restart_firmware_btn(actions_cont, Icons::FIRMWARE_IMG, "Firmware\nRestart", &SettingPanel::_handle_callback, this,
         "Firmware Restart", "Do you want to perform a firmware restart?", {"Back", "Firmware Restart"})
   , guppy_restart_btn(actions_cont, Icons::GUI_IMG, "Restart GUI", &SettingPanel::_handle_callback, this)
+#ifndef OS_ANDROID
+  // The app has no use for the printer-side tools: it cannot zip the
+  // printer's logs, and a phone has no stock firmware to switch a printer to
   , support_zip_btn(actions_cont, Icons::SUPPORT_ZIP_IMG, "Create\nSupport ZIP", &SettingPanel::_handle_callback, this)
   , switch_to_stock_btn(actions_cont, Icons::SWITCH_STOCK_IMG, SWITCH_TO_STOCK_BUTTON_TEXT, &SettingPanel::_handle_callback, this,
           SWITCH_TO_STOCK_BUTTON_TITLE, SWITCH_TO_STOCK_BUTTON_PROMPT, {"Back", "Switch to Stock"})
   , factory_reset_btn(actions_cont, Icons::FACTORY_RESET_IMG, FACTORY_RESET_BUTTON_TEXT, &SettingPanel::_handle_callback, this,
 		  FACTORY_RESET_BUTTON_TITLE, FACTORY_RESET_BUTTON_PROMPT, {"Back", "Factory Reset"})
+#endif
 #ifdef COSMOS
   // no prompt of its own: the update manager client checks for an update
   // first and asks only when there is one to install
   , update_btn(actions_cont, Icons::UPDATE_IMG, UPDATE_BUTTON_TEXT, &SettingPanel::_handle_callback, this)
-#endif
+#else
   , shutdown_host_btn(actions_cont, Icons::SHUTDOWN_IMG, "Shutdown\nHost", &SettingPanel::_handle_callback, this,
           "Shutdown host?", "Do you want to shutdown the host?", {"Back", "Shutdown Host"})
+#endif
 {
-  // Restart Klipper is a local service command and remains useful even when
-  // Moonraker or Klipper is unavailable. Firmware restart, on the other hand,
-  // is a Klipper RPC and starts disabled until that connection is confirmed.
+  // Restart Klipper asks Moonraker to restart the service, so it stays useful
+  // while Klipper is down. Firmware restart, on the other hand, is a Klipper
+  // RPC and starts disabled until that connection is confirmed.
   restart_firmware_btn.disable();
   lv_obj_set_style_pad_all(cont, 0, 0);
   lv_obj_set_size(tabview, LV_PCT(100), LV_PCT(100));
   lv_obj_add_event_cb(tabview, &SettingPanel::_tabview_event_cb,
                       LV_EVENT_VALUE_CHANGED, this);
   lv_obj_set_style_pad_all(actions_tab, 0, 0);
+#ifndef OS_ANDROID
   lv_obj_set_style_pad_all(wifi_tab, 0, 0);
+#endif
   lv_obj_set_style_pad_all(settings_tab, 0, 0);
   lv_obj_set_style_pad_all(about_tab, 0, 0);
   Theme::style_embedded_tabview(tabview);
@@ -240,6 +256,20 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   lv_obj_add_event_cb(sleep_timeout_selector, &SettingPanel::_setting_changed_cb,
                       LV_EVENT_VALUE_CHANGED, this);
 
+  sleep_timeout_warning = lv_label_create(settings_panel);
+  lv_label_set_text(sleep_timeout_warning,
+                    "Warning: Leaving the screen on continuously may cause "
+                    "long-term screen damage. Choose a timeout to help protect it.");
+  lv_obj_set_width(sleep_timeout_warning, LV_PCT(100));
+  lv_label_set_long_mode(sleep_timeout_warning, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_color(sleep_timeout_warning, Theme::col(Theme::WARNING), 0);
+  refresh_sleep_timeout_warning();
+
+#ifdef OS_ANDROID
+  // The app's tools are the same on every printer: they all go through Moonraker
+  layout_tiles(actions_cont, {&restart_klipper_btn, &restart_firmware_btn, &guppy_restart_btn,
+                              &shutdown_host_btn});
+#else
 #ifndef COSMOS
   add_about_line(settings_panel, "Language", true);
   language_selector = lv_dropdown_create(settings_panel);
@@ -272,13 +302,12 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   }
 #ifdef COSMOS
   action_tiles.push_back(&update_btn);
+#else
+  action_tiles.push_back(&shutdown_host_btn);  // through Moonraker
 #endif
 
-  for (const Optional &o : {Optional{&shutdown_host_btn, "/commands/shutdown_host_cmd"}}) {
-    if (has_cmd(o.cmd)) action_tiles.push_back(o.tile); else o.tile->hide();
-  }
-
   layout_tiles(actions_cont, action_tiles);
+#endif
 }
 
 SettingPanel::~SettingPanel() {
@@ -365,6 +394,15 @@ void SettingPanel::setting_changed(lv_event_t *event) {
   }
 
   if (target == emergency_prompt_switch) refresh_emergency_stop_warning();
+  if (target == sleep_timeout_selector) refresh_sleep_timeout_warning();
+}
+
+void SettingPanel::refresh_sleep_timeout_warning() {
+  if (Config::get_instance()->get<int32_t>("/ui/display_sleep_sec") == -1) {
+    lv_obj_clear_flag(sleep_timeout_warning, LV_OBJ_FLAG_HIDDEN);
+  } else {
+    lv_obj_add_flag(sleep_timeout_warning, LV_OBJ_FLAG_HIDDEN);
+  }
 }
 
 #ifndef COSMOS
@@ -384,25 +422,39 @@ void SettingPanel::refresh_emergency_stop_warning() {
 }
 
 void SettingPanel::refresh_active_tab() {
+#ifndef OS_ANDROID
   const uint16_t idx = lv_tabview_get_tab_act(tabview);
   if (idx == lv_obj_get_index(wifi_tab)) {
     wifi_panel.foreground();
   }
+#endif
 }
 
 void SettingPanel::handle_callback(lv_event_t *event) {
     if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
       lv_obj_t *btn = lv_event_get_current_target(event);
     if (btn == restart_klipper_btn.get_container()) {
-      Config *conf = Config::get_instance();
-      auto restart_command = conf->get<std::string>("/commands/restart_klipper_cmd");
-      auto ret = call_command(restart_command);
-      if (ret != 0) {
+      // Moonraker restarts the klipper service it manages (moonraker.asvc),
+      // whatever runs it on this host: systemd, or the init scripts behind
+      // the K1's supervisorctl
+      auto failed = []() {
         create_simple_dialog(lv_scr_act(), "Restart Klipper Failed", "Failed to restart Klipper!", true, true);
-      }
+      };
+      const int sent = ws.send_jsonrpc("machine.services.restart", {{"service", "klipper"}},
+                                       [this, failed](json &r) {
+        if (!r.contains("error")) return;
+        LOG_ERROR("Failed to restart Klipper: {}", r["error"].dump());
+        std::lock_guard<std::mutex> lock(lv_lock);
+        failed();
+      });
+      if (sent < 0) failed();  // no connection to Moonraker
     } else if (btn == restart_firmware_btn.get_container()) {
       ws.send_jsonrpc("printer.firmware_restart");
     } else if (btn == guppy_restart_btn.get_container()) {
+#ifdef OS_ANDROID
+      android_restart_app();
+      return;
+#endif
       Config *conf = Config::get_instance();
       auto restart_command = conf->get<std::string>("/commands/gui_restart_cmd");
       auto ret = call_command(restart_command);
@@ -413,14 +465,24 @@ void SettingPanel::handle_callback(lv_event_t *event) {
     } else if (btn == update_btn.get_container()) {
       // Moonraker runs the update and reports its progress to every UI.
       update_manager.start();
-#endif
+#else
     } else if (btn == shutdown_host_btn.get_container()) {
-      Config *conf = Config::get_instance();
-      auto shutdown_host_cmd = conf->get<std::string>("/commands/shutdown_host_cmd");
-      lv_obj_t *mbox = create_simple_dialog(lv_scr_act(), "Shutdown Host Initiated", "Shutdown of host has been initiated", false, false);
-      run_command_deferred(mbox, shutdown_host_cmd,
-                           "Shutdown Host Failed", "Failed to shutdown host!",
-                           DEFERRED_COMMAND_DELAY_MS);
+      // Moonraker powers the host off (its [machine] shutdown_action): systemd,
+      // or the K1's systemctl wrapper around /sbin/poweroff. The notice can be
+      // closed: a screen that is not on the host outlives it.
+      create_simple_dialog(lv_scr_act(), "Shutdown Host Initiated", "Shutdown of host has been initiated", true, false);
+      auto failed = []() {
+        create_simple_dialog(lv_scr_act(), "Shutdown Host Failed", "Failed to shutdown host!", true, true);
+      };
+      const int sent = ws.send_jsonrpc("machine.shutdown", json::object(), [this, failed](json &r) {
+        if (!r.contains("error")) return;
+        LOG_ERROR("Failed to shutdown host: {}", r["error"].dump());
+        std::lock_guard<std::mutex> lock(lv_lock);
+        failed();
+      });
+      if (sent < 0) failed();  // no connection to Moonraker
+#endif
+#ifndef OS_ANDROID
     } else if (btn == support_zip_btn.get_container()) {
       Config *conf = Config::get_instance();
       auto support_zip_cmd = conf->get<std::string>("/commands/support_zip_cmd");
@@ -450,6 +512,7 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       run_command_deferred(mbox, cmd,
                            FACTORY_RESET_BUTTON_TITLE " Failed", FACTORY_RESET_BUTTON_FAILURE,
                            FACTORY_RESET_DELAY_MS);
+#endif
     }
   }
 }

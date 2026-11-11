@@ -72,6 +72,7 @@ CSRCS			:= $(filter-out $(LVGL_DIR)/lv_drivers/wayland/%.c,$(CSRCS))
 CSRCS 			+= $(wildcard $(LVGL_DIR)/assets/*.c)
 ifdef COSMOS
 CSRCS			:= $(filter-out $(LVGL_DIR)/assets/lang_accents_%.c,$(CSRCS))
+CSRCS			:= $(filter-out $(LVGL_DIR)/assets/dejavusans_mono_hh_14.c,$(CSRCS))
 endif
 ifdef GUPPY_CALIBRATE
 CSRCS			+= $(wildcard $(LVGL_DIR)/lv_touch_calibration/*.c)
@@ -187,6 +188,10 @@ DEFINES				+= -D SDL_HOR_RES=480 -D SDL_VER_RES=272
 else
 DEFINES				+= -D SDL_HOR_RES=800 -D SDL_VER_RES=480
 endif
+else
+# the framebuffer drives the display and blanks it for the screen timeout
+# wherever there is no SDL window (the Android app has its own build)
+DEFINES				+= -D GUPPY_FBDEV
 endif
 
 COMPILE_CC				= $(CC) $(CFLAGS) $(INC) $(DEFINES)
@@ -241,10 +246,31 @@ wpaclean:
 clean:
 	rm -rf $(BUILD_DIR)
 
-test: libhv.a
+CONSOLE_FONT_TEST_SRCS = assets/dejavusans_mono_14.c \
+ lvgl/src/font/lv_font.c lvgl/src/font/lv_font_fmt_txt.c \
+ lvgl/src/misc/lv_mem.c lvgl/src/misc/lv_utils.c lvgl/src/misc/lv_gc.c
+ifndef COSMOS
+CONSOLE_FONT_TEST_SRCS += assets/dejavusans_mono_hh_14.c
+endif
+CONSOLE_FONT_TEST_OBJS = $(addprefix $(BUILD_OBJ_DIR)/,$(CONSOLE_FONT_TEST_SRCS:.c=.o))
+
+.PHONY: test-console-font
+test-console-font: $(CONSOLE_FONT_TEST_OBJS)
+	$(CXX) -std=c++17 $(INC) $(DEFINES) tests/test_console_font.cpp $(CONSOLE_FONT_TEST_OBJS) -o $(BUILD_DIR)/test_console_font
+	$(BUILD_DIR)/test_console_font
+
+LVGL_TEST_OBJS = $(filter-out $(BUILD_OBJ_DIR)/lv_drivers/%.o,$(filter $(BUILD_OBJ_DIR)/lvgl/%.o $(BUILD_OBJ_DIR)/lv_%.o,$(TARGET)))
+.PHONY: test-notification-banner
+test-notification-banner: $(LVGL_TEST_OBJS) $(BUILD_OBJ_DIR)/src/notification_banner.o
+	@$(CXX) -std=c++17 -I./src $(INC) $(DEFINES) tests/test_notification_banner.cpp $(BUILD_OBJ_DIR)/src/notification_banner.o $(LVGL_TEST_OBJS) -lm -o $(BUILD_DIR)/test_notification_banner
+	$(BUILD_DIR)/test_notification_banner
+
+test: libhv.a test-console-font test-notification-banner
 	@mkdir -p $(BUILD_DIR)
 	g++ -std=gnu++17 -O2 -I./src -I$(DEPS_DIR)/include/ tests/test_config.cpp -o $(BUILD_DIR)/test_config
 	$(BUILD_DIR)/test_config
+	g++ -std=gnu++17 -O2 -I./src tests/test_console_colour.cpp src/console_colour.cpp -o $(BUILD_DIR)/test_console_colour
+	$(BUILD_DIR)/test_console_colour
 # the backend fixture stubs State and the websocket client, so it links
 # only the backend under test (libhv for the client's base class)
 	g++ -std=gnu++17 -O2 -I./src -I./fmt/include -Ilibhv/include/ $(MMU_BACKEND_DEFS) $(MMU_BACKEND_SRC) \

@@ -6,6 +6,7 @@ and klipper give.
     python3 tools/sim_smoke.py            # exit status 0 when everything passed
 """
 import asyncio
+import argparse
 import json
 import os
 import subprocess
@@ -120,6 +121,30 @@ async def run():
     check(c.state["AFC"]["message"]["message"] == "", "queue empties")
     check(c.state["AFC"]["multiple_tool_mapping"] is True, "multiple_tool_mapping published")
 
+    # --- AFC's raw HTML stays intact over the websocket and in console history
+    start = len(c.notes)
+    await c.gcode("SIM_AFC_CONSOLE")
+    output = [n["params"][0] for n in c.notes[start:]
+              if n["method"] == "notify_gcode_response"]
+    check('lane1 tool cmd: T0  <span class=success--text>LOCKED</span>'
+          '<span class=success--text> AND LOADED</span>'
+          '<span class=primary--text> in ToolHead</span>' in output,
+          "afc: PREP sends raw adjacent colour spans and space-padded tool")
+    check('lane4 tool cmd: T3  EMPTY READY FOR SPOOL' in output,
+          "afc: PREP reports the empty lane")
+    check(any(s.startswith('<span class=success--text>R  _____     ____\n')
+              and s.endswith('  CANVAS_1\n') for s in output),
+          "afc: multiline logo stays in one raw response with spaces intact")
+    check(output[-2:] == ['<span class=warning--text>WARNING: '
+                         'Ram sensor enabled, confirm tool is loaded</span>',
+                         'Filament loaded to nozzle (Δt:0.125s, t:1.500)'],
+          "afc: console samples include warning HTML and UTF-8 delta timing")
+    store = (await c.call("server.gcode_store", {"count": 20}))["result"]["gcode_store"]
+    check([r["message"] for r in store if r["type"] == "response"][-len(output):] == output,
+          "afc: console history preserves the same raw responses")
+    check(c.state["AFC"]["message"]["message"] == "",
+          "afc: console samples leave the message queue empty")
+
     # --- files and metadata
     r = await c.call("server.files.metadata", {"filename": "nope.gcode"})
     check(r.get("error") == {"code": -32601, "message": "Metadata not available for <nope.gcode>"},
@@ -216,7 +241,30 @@ async def run_afc_empty():
     await c.ws.close()
 
 
+async def run_hh_console():
+    c = await subscribed()
+    before = json.loads(json.dumps(c.state["mmu"]))
+    start = len(c.notes)
+    await c.gcode("SIM_HH_CONSOLE")
+    output = [n["params"][0] for n in c.notes[start:]
+              if n["method"] == "notify_gcode_response"]
+    with open(os.path.join(HERE, "moonsim/hh_console_samples.json"), encoding="utf-8") as f:
+        samples = json.load(f)["samples"]
+    expected = ["// " + line for messages in samples.values()
+                for message in messages for line in message.split("\n")]
+    check(output == expected, "hh: HTML, Unicode and spaces survive websocket responses byte for byte")
+    check(any('\u00a0' in s for s in output), "hh: bypass row retains non-breaking space")
+    check(any('<b><span style="color:#87CEEB">UNLOADED</span></b>' in s for s in output),
+          "hh: bold and nested inline colour spans reach the console")
+    store = (await c.call("server.gcode_store", {"count": 50}))["result"]["gcode_store"]
+    check([r["message"] for r in store if r["type"] == "response"][-len(output):] == expected,
+          "hh: history retains the same raw formatting")
+    check(c.state["mmu"] == before, "hh: samples leave MMU state unchanged")
+    await c.ws.close()
+
+
 async def run_hh():
+    await run_hh_console()
     c = await subscribed()
     tools, states = set(), set()
     await c.call("printer.print.start", {"filename": "stripes_2colour.gcode"})
@@ -257,7 +305,13 @@ def with_mock(flags, coro):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--hh-console-only", action="store_true", help="only check Happy Hare console captures")
+    args = parser.parse_args()
     open("/tmp/grumpy-sim-%d.log" % PORT, "w").close()
+    if args.hh_console_only:
+        with_mock(["--backend", "hh"], run_hh_console)
+        sys.exit(1 if FAILS else 0)
     with_mock(["--extruders", "2", "--rgb-led", "--afc-multi-map", "--message", "first message",
                "--update", "ok"], run)
     print("-- afc multicolour")

@@ -37,6 +37,7 @@ Point the screen's `[moonraker]` `host` and `port` at it, and set `thumbnail_pat
 | `SIM_FANS` | `1` | How many of `grumpyscreen.cfg`'s fans exist (1-7) |
 | `SIM_LEDS` | `1` | How many of its output_pin LEDs exist (0-5) |
 | `SIM_SPOOLMAN` | `push` | `off`, `readonly`, `push` or `pull` |
+| `HIDE_SPOOLMAN` | Config value | `true` hides the global Spoolman nav tab; `false` shows it. Overrides the config; MMU Spoolman integration stays available. |
 | `SIM_PRINTING` | `0` | `1` starts `quick_cube.gcode`, or name a file |
 | `SIM_ARGS` | | Any `fake_moonraker.py` flag, see below |
 | `SIM_WIFI` | `1` | `0` runs without the fake wpa_supplicant |
@@ -45,6 +46,8 @@ Point the screen's `[moonraker]` `host` and `port` at it, and set `thumbnail_pat
 | `SIM_BUILD` | | Build folder to run, e.g. `build/sdl` |
 | `SIM_CFG_SRC` | `grumpyscreen.cfg` | Config the session config is made from |
 | `SIM_KEEP` | `0` | `1` keeps other UIs running, for side-by-side ports |
+
+Run `HIDE_SPOOLMAN=true ./sim.sh` to test with the global Spoolman tab hidden. The same environment variable works when launching GrumpyScreen directly. Unset or invalid values follow the config.
 
 Useful `SIM_ARGS` flags (`python3 tools/fake_moonraker.py --help` lists all):
 
@@ -92,9 +95,115 @@ From the console panel or `python3 tools/sim_send.py "SIM_PRINT"`:
 | `SIM_DISCONNECT [SECONDS=5]` | Moonraker drops every client |
 | `SIM_KLIPPER_STOP [SECONDS=10]` | The Klipper service stops, then starts |
 | `SIM_MESSAGE TEXT=.. [TYPE=error]` | AFC message |
+| `PREP` | AFC lane checks and coloured Box Turtle artwork, using the simulated sensors |
+| `SIM_AFC_CONSOLE` | AFC PREP plus warning HTML and a Unicode debug timing sample; leaves the message queue alone |
+| `SIM_HH_CONSOLE [SAMPLE=all\|boot\|thin\|sensors]` | Replay captured Happy Hare HTML, alignment spaces and Unicode diagrams |
 | `SIM_RUNOUT [LANE=x]`, `SIM_FAULT [LANE=x]` | AFC runout and lane fault |
 | `SIM_FAULT GATE=n`, `SIM_ERROR` | Happy Hare jammed gate and pause_locked error |
 
 `python3 tools/sim_send.py --rpc server.info` sends any Moonraker method; `--listen 10` prints notifications.
 
 `python3 tools/sim_smoke.py` checks the simulator end to end.
+
+### Shared notification banner
+
+Start `./sim.sh`, then send these from the simulated console or through
+`python3 tools/sim_send.py "COMMAND"`:
+
+| Scenario | Commands / check |
+| --- | --- |
+| Short message and compact height | `M117 Ready` — X sends an empty `M117` to clear it; sending `M117 Ready` again shows it again |
+| Long wrapped message | `M117 A long printer message that should wrap across several lines while keeping the close button at the far right of the banner` |
+| Klipper command error | `G28`, then `G0 X99999` — X dismisses; repeat to show it again |
+| AFC warning queue | `SIM_MESSAGE TEXT="First warning" TYPE=warning`, then `SIM_MESSAGE TEXT="Second warning" TYPE=warning` — X acknowledges the first and exposes the next |
+| AFC console error | `SIM_MESSAGE TEXT="Test AFC error" TYPE=error` — detailed error uses the shared banner |
+| AFC fault | `SIM_FAULT LANE=lane1` — use the MMU header's Reset action; sending the same command again also toggles the fault |
+| Happy Hare fault | Start `SIM_BACKEND=hh ./sim.sh`, then `SIM_ERROR` — X hides the message without resetting; the MMU header still offers Reset |
+| Priority and tab changes | Show a warning, then trigger a Klipper error; the error takes priority. Dismiss it to reveal the warning. Change tabs while either is visible |
+| Prompt interaction | `SIM_PROMPT`, then trigger a Klipper command error — the error belongs to the prompt while it is open |
+
+The simulator supplies backend events; click X and Reset in the UI to check
+their effects. `make GUPPY_SDL=1 BUILD_DIR=build/sdl test-notification-banner`
+also checks the shared LVGL widget without a window: one overlay, short-message
+height, wrapping, priority, dismissal, reset callbacks and fault recurrence.
+
+### AFC console formatting (#442)
+
+Run `python3 tools/sim_send.py "SIM_AFC_CONSOLE"` with the console open to
+reproduce AFC's formatting. `PREP` reports the current sensors without moving
+motors. With `SIM_LANES=5`, the staged fifth lane produces `NOT LOADED` and
+the error artwork; the default four lanes produce the ready artwork.
+
+These samples follow the sibling AFC plugin's `AFC_prep`, `AFC_BoxTurtle`,
+`AFC_extruder`, `AFC_logger` and `afcDeltaTime` output. The mock uses Box Turtle
+artwork labelled with its existing `CANVAS_1` unit. AFC sends raw messages with
+unquoted `<span class=success--text>` (also `error`, `warning`, `info`, `primary`
+and `secondary`), adjacent spans, embedded newlines and repeated literal spaces.
+The ready artwork even leaves its final success span open upstream; the mock
+preserves that. These logger messages have no `// ` prefix and aren't split
+into separate responses. Warnings retain HTML, while errors use `!! `.
+
+No tab-based alignment or HTML character entities were found in these AFC
+paths. Its debug timings contain the literal Unicode character `Δ`; the sample
+uses fixed example durations. The screenshot in
+[#442](https://github.com/pellcorp/grumpyscreen/issues/442) shows Happy Hare's
+inline `style="color:..."`, `<b>` tags and Unicode diagrams, which differ from
+these AFC samples. These commands supply console input for investigating the
+renderer.
+
+The console translates `<span style="color:#RRGGBB">` (also `#RGB`) into
+inline foreground colours. AFC's `success--text`, `warning--text` and
+`error--text` classes use the same theme colours as echo, warning and error
+lines; `primary--text`, `secondary--text` and `info--text` use their theme
+colours. Nested spans restore the surrounding colour when closed. Unknown
+span colours inherit the surrounding colour. `<b>` tags are removed while
+retaining their text. Turning console colours off still removes these tags.
+Sent commands remain literal.
+
+Non-COSMOS builds also include a small DejaVu Sans Mono fallback containing
+28 Happy Hare punctuation, box-drawing, block, arrow and sensor glyphs. Their
+advance widths match the existing 14px console font so the diagrams retain
+their columns. COSMOS builds omit the fallback source and keep the original
+font without a fallback. Emoji are outside this subset.
+
+To regenerate `assets/dejavusans_mono_hh_14.c`, run
+`python3 tools/make_console_font.py /path/to/DejaVuSansMono.ttf`. It uses
+`lv_font_conv@1.5.3`; the generated file records the source font SHA256.
+The font used here is from
+[Matplotlib v3.10.0](https://github.com/matplotlib/matplotlib/blob/v3.10.0/lib/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono.ttf),
+with its licence in `assets/LICENSE-DejaVu.txt`. Only the generated subset
+is needed to build the application. `make test-console-font` checks actual
+LVGL lookup, bitmap availability and character widths; run with a separate
+`BUILD_DIR` and `COSMOS=true` to check exclusion too.
+
+### Happy Hare console formatting (#442)
+
+Start `SIM_BACKEND=hh ./sim.sh`, open the console, then run:
+
+```
+python3 tools/sim_send.py "SIM_HH_CONSOLE"
+python3 tools/sim_send.py "SIM_HH_CONSOLE SAMPLE=boot"
+```
+
+`boot` reproduces the screenshot's four-gate map, bypass column, black/magenta
+swatches, selected-gate triangle and bold UNLOADED filament diagram. `thin`
+shows a loaded filament using thin lines and an arrow tip. `sensors` includes
+triggered/clear sensor circles, the encoder marker, loading arrows and a
+coloured warning. The default `all` replays all three groups. These are fixed
+formatting examples, independent of the simulator's current gate count or
+filament state; replaying them does not change that state.
+
+The captures use the sibling checkout's actual `_mmu_visual_to_string`,
+`_get_filament_char`, `get_filament_position_string` and
+`MmuLogger._color_message` methods. They retain adjacent inline colour spans,
+nested `<b>`/`<span>` tags, literal Unicode glyphs and non-breaking spaces
+(`U+00A0`), rather than HTML entities or tabs. Happy Hare uses Klipper's
+`respond_info`, so each line arrives prefixed with `// `.
+
+`tools/moonsim/hh_console_samples.json` records the source commit. Regenerate
+it with `python3 tools/make_hh_console_samples.py ../Happy-Hare`; the generator
+executes the formatting methods against plain data using Happy Hare's own
+filament-display test adapter, without booting Klipper. The simulator itself
+needs only the checked-in captures, with no sibling checkout or extra Python
+dependencies. Check replay over the websocket and in console history with
+`python3 tools/sim_smoke.py --hh-console-only`.
