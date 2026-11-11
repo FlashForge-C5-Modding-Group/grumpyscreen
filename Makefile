@@ -261,8 +261,8 @@ test-console-font: $(CONSOLE_FONT_TEST_OBJS)
 
 LVGL_TEST_OBJS = $(filter-out $(BUILD_OBJ_DIR)/lv_drivers/%.o,$(filter $(BUILD_OBJ_DIR)/lvgl/%.o $(BUILD_OBJ_DIR)/lv_%.o,$(TARGET)))
 .PHONY: test-notification-banner
-test-notification-banner: $(LVGL_TEST_OBJS) $(BUILD_OBJ_DIR)/src/notification_banner.o
-	@$(CXX) -std=c++17 -I./src $(INC) $(DEFINES) tests/test_notification_banner.cpp $(BUILD_OBJ_DIR)/src/notification_banner.o $(LVGL_TEST_OBJS) -lm -o $(BUILD_DIR)/test_notification_banner
+test-notification-banner: $(LVGL_TEST_OBJS) $(BUILD_OBJ_DIR)/src/notification_banner.o $(BUILD_OBJ_DIR)/src/i18n.o
+	@$(CXX) -std=c++17 -I./src $(INC) $(DEFINES) tests/test_notification_banner.cpp $(BUILD_OBJ_DIR)/src/notification_banner.o $(BUILD_OBJ_DIR)/src/i18n.o $(LVGL_TEST_OBJS) -lm -lstdc++fs -o $(BUILD_DIR)/test_notification_banner
 	$(BUILD_DIR)/test_notification_banner
 
 test: libhv.a test-console-font test-notification-banner
