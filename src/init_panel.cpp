@@ -3,6 +3,7 @@
 #include "state.h"
 #include "config.h"
 #include "mmu_panel.h"
+#include "notification_banner.h"
 #include "logger.h"
 #include "theme.h"
 
@@ -73,7 +74,9 @@ void InitPanel::start_initialization(KWebSocketClient &ws) {
   // Do not let that partial state build panels (or select an MMU backend): the
   // ready notification will start a fresh attempt when Klipper is usable.
   ws.send_jsonrpc("printer.info", [this, &ws, generation](json& info) {
-    if (!initialization_active(generation)) return;
+    if (!initialization_active(generation)) {
+      return;
+    }
     State::get_instance()->set_data("printer_info", info, "/result");
     const std::string klippy_state = info.value("/result/state"_json_pointer, std::string());
     const bool klipper_connected = !klippy_state.empty() && klippy_state != "disconnected";
@@ -90,20 +93,26 @@ void InitPanel::start_initialization(KWebSocketClient &ws) {
     }
 
     ws.send_jsonrpc("printer.objects.list", [this, &ws, generation](json& d) {
-      if (!initialization_active(generation)) return;
+      if (!initialization_active(generation)) {
+        return;
+      }
     State *state = State::get_instance();
 	  state->set_data("printer_objs", d, "/result");
 
 	  ws.send_jsonrpc("server.files.roots",
 			[this, generation](json& j) {
-          if (initialization_active(generation)) State::get_instance()->set_data("roots", j, "/result");
+          if (initialization_active(generation)) {
+            State::get_instance()->set_data("roots", j, "/result");
+          }
         });
 
     this->main_panel.subscribe();
 
     // spoolman
     ws.send_jsonrpc("server.info", [this, generation](json &j) {
-      if (!initialization_active(generation)) return;
+      if (!initialization_active(generation)) {
+        return;
+      }
       if (get_log_level() <= LogLevel::DEBUG) {
         LOG_DEBUG("server_info {}", j.dump());
       }
@@ -139,9 +148,15 @@ void InitPanel::start_initialization(KWebSocketClient &ws) {
       for (auto &obj : objs) {
         std::string obj_name = obj.template get<std::string>();
         bool skip = false;
-        for (const char *p : skip_prefixes) skip = skip || obj_name.rfind(p, 0) == 0;
-        for (const char *n : skip_names) skip = skip || obj_name == n;
-        if (skip) continue;
+        for (const char *p : skip_prefixes) {
+          skip = skip || obj_name.rfind(p, 0) == 0;
+        }
+        for (const char *n : skip_names) {
+          skip = skip || obj_name == n;
+        }
+        if (skip) {
+          continue;
+        }
         if (obj_name == "configfile") {
           sub_objs[obj_name] = json::array({"settings"});
         } else {
@@ -163,7 +178,9 @@ void InitPanel::start_initialization(KWebSocketClient &ws) {
         LOG_DEBUG("subscribing to {}", subs.dump());
       }
       ws.send_jsonrpc("printer.objects.subscribe", subs, [this, generation](json &data) {
-        if (!initialization_active(generation)) return;
+        if (!initialization_active(generation)) {
+          return;
+        }
         State::get_instance()->set_data("printer_state", data, "/result/status");
         this->main_panel.init(data);
         LOG_DEBUG("done init");
@@ -203,7 +220,9 @@ void InitPanel::show_klippy_error(json &printer_info) {
 void InitPanel::initialization_complete(uint64_t generation) {
   {
     std::lock_guard<std::mutex> lock(lv_lock);
-    if (lifecycle != Lifecycle::Initializing || lifecycle_generation != generation) return;
+    if (lifecycle != Lifecycle::Initializing || lifecycle_generation != generation) {
+      return;
+    }
     lifecycle = Lifecycle::Ready;
     waiting = false;
     update_visibility();
@@ -242,6 +261,8 @@ void InitPanel::begin_waiting(const char *message, bool firmware_restart_availab
     std::lock_guard<std::mutex> lock(lv_lock);
     ++lifecycle_generation;
     lifecycle = Lifecycle::WaitingForKlipper;
+    // Messages from the previous Klipper session are stale as soon as it goes down.
+    NotificationBanner::instance().clear_all();
     set_message(message);
     waiting = true;
     update_visibility();
@@ -265,6 +286,8 @@ void InitPanel::update_visibility() {
 }
 
 void InitPanel::_tabview_event_cb(lv_event_t *event) {
-  if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED) return;
+  if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED) {
+    return;
+  }
   static_cast<InitPanel *>(lv_event_get_user_data(event))->update_visibility();
 }

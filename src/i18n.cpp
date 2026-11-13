@@ -39,7 +39,9 @@ void refresh_map(ButtonMap &m) {
 
 bool read_json(const std::string &path, json &out) {
   std::ifstream in(path);
-  if (!in) return false;
+  if (!in) {
+    return false;
+  }
   out = json::parse(in, nullptr, false);
   return out.is_object();
 }
@@ -49,9 +51,13 @@ bool read_json(const std::string &path, json &out) {
 namespace I18n {
 
 const char *tr(const char *text) {
-  if (text == nullptr || table.empty()) return text;
+  if (text == nullptr || table.empty()) {
+    return text;
+  }
   const auto found = table.find(text);
-  if (found != table.end()) return found->second.c_str();
+  if (found != table.end()) {
+    return found->second.c_str();
+  }
 
   // "Extruder 0": translate the name and keep the number. In the table, the
   // result outlives this call and a language switch can read it back.
@@ -62,16 +68,22 @@ const char *tr(const char *text) {
     return text;
   }
   const auto name = table.find(whole.substr(0, space));
-  if (name == table.end()) return text;
+  if (name == table.end()) {
+    return text;
+  }
   return table.emplace(whole, name->second + whole.substr(space)).first->second.c_str();
 }
 
 const char **map(const char *const *english) {
   std::vector<std::string> keys;
-  for (size_t i = 0; english[i][0] != '\0'; i++) keys.emplace_back(english[i]);
+  for (size_t i = 0; english[i][0] != '\0'; i++) {
+    keys.emplace_back(english[i]);
+  }
 
   for (ButtonMap &m : button_maps) {
-    if (m.english == keys) return m.shown.data();
+    if (m.english == keys) {
+      return m.shown.data();
+    }
   }
   ButtonMap &m = button_maps.emplace_back();
   m.english = std::move(keys);
@@ -84,10 +96,14 @@ std::vector<Language> available(const std::string &dir) {
   std::vector<Language> languages;
   std::error_code ec;
   for (const auto &entry : fs::directory_iterator(dir, ec)) {
-    if (entry.path().extension() != ".json") continue;
+    if (entry.path().extension() != ".json") {
+      continue;
+    }
     const std::string code = entry.path().stem().string();
     json file;
-    if (code == "en" || !read_json(entry.path().string(), file)) continue;
+    if (code == "en" || !read_json(entry.path().string(), file)) {
+      continue;
+    }
     const auto name = file.find(NAME_KEY);
     if (name != file.end() && name->is_string()) {
       languages.push_back({code, name->get<std::string>()});
@@ -113,17 +129,23 @@ bool load(const std::string &dir, const std::string &code) {
     json file;
     if (!read_json((fs::path(dir) / (code + ".json")).string(), file)) {
       // English is the text in the code, so it works without its file
-      if (code != "en") return false;
+      if (code != "en") {
+        return false;
+      }
       file = json::object();
     }
     for (auto it = file.begin(); it != file.end(); ++it) {
-      if (it.key() != NAME_KEY && it->is_string()) next.emplace(it.key(), it->get<std::string>());
+      if (it.key() != NAME_KEY && it->is_string()) {
+        next.emplace(it.key(), it->get<std::string>());
+      }
     }
   }  // the parsed file is gone before the old table goes
 
   table.swap(next);
   active = code;
-  for (ButtonMap &m : button_maps) refresh_map(m);
+  for (ButtonMap &m : button_maps) {
+    refresh_map(m);
+  }
 
   // releases the previous language; nothing points into it any more
   Table().swap(next);
@@ -136,7 +158,9 @@ bool load(const std::string &dir, const std::string &code) {
 std::vector<std::pair<std::string, std::string>> reverse_table() {
   std::vector<std::pair<std::string, std::string>> reverse;
   reverse.reserve(table.size());
-  for (const auto &entry : table) reverse.emplace_back(entry.second, entry.first);
+  for (const auto &entry : table) {
+    reverse.emplace_back(entry.second, entry.first);
+  }
   return reverse;
 }
 

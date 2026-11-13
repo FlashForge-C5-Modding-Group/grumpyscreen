@@ -7,6 +7,7 @@
 #include "wifi_panel.h"
 #endif
 #include "websocket_client.h"
+#include "i18n.h"
 #ifdef COSMOS
 #include "update_manager_client.h"
 #endif
@@ -36,14 +37,16 @@ class SettingPanel {
 
  private:
   static void _tabview_event_cb(lv_event_t *event);
-  static void _setting_changed_cb(lv_event_t *event);
   void refresh_active_tab();
+#ifndef OS_ANDROID
+  static void _setting_changed_cb(lv_event_t *event);
   void setting_changed(lv_event_t *event);
   void refresh_emergency_stop_warning();
 #ifndef COSMOS
   void select_current_language();
 #endif
   void refresh_sleep_timeout_warning();
+#endif
 
   KWebSocketClient &ws;
   std::mutex &lv_lock;
@@ -53,12 +56,15 @@ class SettingPanel {
   lv_obj_t *actions_tab;
 #ifndef OS_ANDROID
   lv_obj_t *wifi_tab;  // Android leaves the device's wifi to Android
-#endif
   lv_obj_t *settings_tab;
+#endif
   lv_obj_t *about_tab;
   lv_obj_t *actions_cont;
+#ifndef OS_ANDROID
   lv_obj_t *settings_cont;
+#endif
   lv_obj_t *about_cont;
+#ifndef OS_ANDROID
   lv_obj_t *emergency_prompt_switch;
   lv_obj_t *emergency_stop_warning;
   lv_obj_t *sleep_timeout_selector;
@@ -67,6 +73,7 @@ class SettingPanel {
   std::vector<I18n::Language> languages;
 #endif
   lv_obj_t *sleep_timeout_warning;
+#endif
 #ifdef COSMOS
   UpdateManagerClient update_manager;
 #endif
@@ -77,8 +84,8 @@ class SettingPanel {
 
   ButtonContainer restart_klipper_btn;
   ButtonContainer restart_firmware_btn;
-  ButtonContainer guppy_restart_btn;
 #ifndef OS_ANDROID
+  ButtonContainer guppy_restart_btn;
   ButtonContainer support_zip_btn;
   ButtonContainer switch_to_stock_btn;
   ButtonContainer factory_reset_btn;

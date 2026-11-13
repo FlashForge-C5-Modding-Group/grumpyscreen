@@ -45,7 +45,9 @@ static const std::map<std::string, const lv_img_dsc_t *> macro_icons = {
 
 static const lv_img_dsc_t *macro_icon(const std::string &name) {
   auto it = macro_icons.find(name);
-  if (it != macro_icons.end()) return it->second;
+  if (it != macro_icons.end()) {
+    return it->second;
+  }
   LOG_ERROR("Unknown macro icon '{}', using refresh", name);
   return Icons::REFRESH_IMG;
 }
@@ -53,7 +55,9 @@ static const lv_img_dsc_t *macro_icon(const std::string &name) {
 namespace {
 std::string trim_copy(std::string value) {
   const auto first = value.find_first_not_of(" \t");
-  if (first == std::string::npos) return {};
+  if (first == std::string::npos) {
+    return {};
+  }
   const auto last = value.find_last_not_of(" \t");
   return value.substr(first, last - first + 1);
 }
@@ -71,15 +75,21 @@ std::vector<std::string> split_gcode(const std::string &gcode) {
   std::string token;
   int braces = 0;
   for (char c : gcode) {
-    if (c == '{') ++braces;
+    if (c == '{') {
+      ++braces;
+    }
     if (std::isspace(static_cast<unsigned char>(c)) && braces == 0) {
       if (!token.empty()) { tokens.push_back(token); token.clear(); }
     } else {
       token += c;
     }
-    if (c == '}' && braces > 0) --braces;
+    if (c == '}' && braces > 0) {
+      --braces;
+    }
   }
-  if (!token.empty()) tokens.push_back(token);
+  if (!token.empty()) {
+    tokens.push_back(token);
+  }
   return tokens;
 }
 }  // namespace
@@ -90,7 +100,9 @@ MacroPanel::MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)
 {
   for (auto &m : Config::get_instance()->get_objects("/macro")) {
     std::string gcode = m.value("id", std::string());
-    if (gcode.empty()) continue;
+    if (gcode.empty()) {
+      continue;
+    }
     std::string name = m.value("display_name", gcode);
     const lv_img_dsc_t *icon = macro_icon(m.value("icon", std::string("refresh")));
     buttons.push_back(std::make_unique<ButtonContainer>(grid, icon, name.c_str(),
@@ -141,7 +153,9 @@ MacroPanel::MacroPanel(lv_obj_t *parent, std::function<void(const std::string &)
 }
 
 MacroPanel::~MacroPanel() {
-  if (refresh_timer != NULL) lv_timer_del(refresh_timer);
+  if (refresh_timer != NULL) {
+    lv_timer_del(refresh_timer);
+  }
   close_dialog();
 }
 
@@ -169,7 +183,9 @@ void MacroPanel::handle_long_press(lv_event_t *event) {
   lv_obj_t *tile = lv_event_get_current_target(event);
   for (size_t i = 0; i < panel->buttons.size(); i++) {
     if (panel->buttons[i]->get_container() == tile) {
-      if (panel->klipper_params[i].empty()) return;
+      if (panel->klipper_params[i].empty()) {
+        return;
+      }
       panel->suppress_click = true;
       panel->open_dialog(i);
       return;
@@ -191,8 +207,12 @@ static std::vector<MacroPanel::KlipperParam> parse_klipper_params(const std::str
       std::transform(p.name.begin(), p.name.end(), p.name.begin(), [](unsigned char c) { return std::toupper(c); });
       std::string def = (*it)[2].matched ? (*it)[2].str() : "";
       if (std::regex_match(def, literal)) {
-        if (def.size() >= 2 && (def.front() == '\'' || def.front() == '"')) def = def.substr(1, def.size() - 2);
-        if (def != "none" && def != "None") p.def = def;
+        if (def.size() >= 2 && (def.front() == '\'' || def.front() == '"')) {
+          def = def.substr(1, def.size() - 2);
+        }
+        if (def != "none" && def != "None") {
+          p.def = def;
+        }
       }
       found.push_back({(size_t)it->position(), p});
     }
@@ -204,8 +224,11 @@ static std::vector<MacroPanel::KlipperParam> parse_klipper_params(const std::str
     if (seen.insert(f.second.name).second) {
       out.push_back(f.second);
     } else if (!f.second.def.empty()) {
-      for (auto &o : out)
-        if (o.name == f.second.name && o.def.empty()) o.def = f.second.def;
+      for (auto &o : out) {
+        if (o.name == f.second.name && o.def.empty()) {
+          o.def = f.second.def;
+        }
+      }
     }
   }
   return out;
@@ -214,12 +237,16 @@ static std::vector<MacroPanel::KlipperParam> parse_klipper_params(const std::str
 void MacroPanel::handle_refresh(lv_timer_t *timer) {
   MacroPanel *panel = (MacroPanel *)timer->user_data;
   panel->refresh_klipper_params();
-  if (panel->params_loaded) lv_timer_set_period(timer, 30000);
+  if (panel->params_loaded) {
+    lv_timer_set_period(timer, 30000);
+  }
 }
 
 void MacroPanel::refresh_klipper_params() {
   json &settings = State::get_instance()->get_data("/printer_state/configfile/settings"_json_pointer);
-  if (!settings.is_object()) return;
+  if (!settings.is_object()) {
+    return;
+  }
   params_loaded = true;
   for (size_t i = 0; i < buttons.size(); i++) {
     std::string name = gcodes[i].substr(0, gcodes[i].find(' '));
@@ -227,8 +254,9 @@ void MacroPanel::refresh_klipper_params() {
     std::vector<KlipperParam> found;
     auto section = settings.find("gcode_macro " + name);
     if (section != settings.end() && section->is_object() && section->contains("gcode")
-        && (*section)["gcode"].is_string())
+        && (*section)["gcode"].is_string()) {
       found = parse_klipper_params((*section)["gcode"].get<std::string>());
+    }
     klipper_params[i] = found;
     lv_obj_t *tile = buttons[i]->get_container();
     if (!found.empty() && badges[i] == NULL) {
@@ -329,7 +357,9 @@ void MacroPanel::open_dialog(size_t idx) {
 }
 
 void MacroPanel::show_keyboard(lv_obj_t *field) {
-  if (dialog == NULL) return;
+  if (dialog == NULL) {
+    return;
+  }
   lv_coord_t h = lv_disp_get_ver_res(NULL);
   if (field != NULL) {
     lv_keyboard_set_textarea(keyboard, field);
@@ -339,7 +369,9 @@ void MacroPanel::show_keyboard(lv_obj_t *field) {
     lv_obj_scroll_to_view(lv_obj_get_parent(field), LV_ANIM_ON);
   } else {
     lv_obj_t *ta = lv_keyboard_get_textarea(keyboard);
-    if (ta != NULL) lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+    if (ta != NULL) {
+      lv_obj_clear_state(ta, LV_STATE_FOCUSED);
+    }
     lv_keyboard_set_textarea(keyboard, NULL);
     lv_obj_add_flag(keyboard, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_height(card, h - 2 * gap());
@@ -347,7 +379,9 @@ void MacroPanel::show_keyboard(lv_obj_t *field) {
 }
 
 void MacroPanel::close_dialog() {
-  if (dialog != NULL) lv_obj_del(dialog);  // its children (keyboard, fields) go with it
+  if (dialog != NULL) {
+    lv_obj_del(dialog);  // its children (keyboard, fields) go with it
+  }
   dialog = card = keyboard = send_btn = cancel_btn = NULL;
   fields.clear();
 }
@@ -378,8 +412,12 @@ void MacroPanel::handle_dialog(lv_event_t *event) {
         ? configured : configured.substr(0, configured.find(' '));
     for (size_t i = 0; i < panel->fields.size(); i++) {
       std::string v = trim_copy(lv_textarea_get_text(panel->fields[i]));
-      if (v.empty()) continue;
-      if (v.find(' ') != std::string::npos) v = "\"" + v + "\"";
+      if (v.empty()) {
+        continue;
+      }
+      if (v.find(' ') != std::string::npos) {
+        v = "\"" + v + "\"";
+      }
       gcode += " " + panel->klipper_params[panel->dialog_idx][i].name + "=" + v;
     }
     panel->close_dialog();
@@ -389,7 +427,9 @@ void MacroPanel::handle_dialog(lv_event_t *event) {
 
 bool MacroPanel::parse_macro(const std::string &gcode, Macro &macro) {
   const auto tokens = split_gcode(gcode);
-  if (tokens.empty()) return false;
+  if (tokens.empty()) {
+    return false;
+  }
 
   for (const std::string &token : tokens) {
     const size_t equals = token.find('=');
@@ -410,19 +450,27 @@ bool MacroPanel::parse_macro(const std::string &gcode, Macro &macro) {
       std::string value;
       while (std::getline(values, value, ',')) {
         value = trim_copy(value);
-        if (value.empty()) return false;
+        if (value.empty()) {
+          return false;
+        }
         parameter.choices.push_back(std::move(value));
       }
-      if (parameter.choices.empty()) return false;
+      if (parameter.choices.empty()) {
+        return false;
+      }
     } else {
       // A range is exactly {minimum-maximum}; values are inclusive integers.
       const size_t dash = contents.find('-', !contents.empty() && contents.front() == '-' ? 1 : 0);
-      if (dash == std::string::npos) return false;
+      if (dash == std::string::npos) {
+        return false;
+      }
       const std::string low = trim_copy(contents.substr(0, dash));
       const std::string high = trim_copy(contents.substr(dash + 1));
       parameter.type = Parameter::Type::IntegerRange;
       if (!parse_int(low, parameter.minimum) || !parse_int(high, parameter.maximum)
-          || parameter.minimum > parameter.maximum) return false;
+          || parameter.minimum > parameter.maximum) {
+        return false;
+      }
     }
 
     if (macro.parameters.size() == max_parameters) {
@@ -482,7 +530,9 @@ void MacroPanel::open_popup(size_t macro_index, const std::string &title) {
       parameter.control = lv_dropdown_create(row);
       std::string options;
       for (const std::string &choice : parameter.choices) {
-        if (!options.empty()) options += '\n';
+        if (!options.empty()) {
+          options += '\n';
+        }
         options += choice;
       }
       lv_dropdown_set_options(parameter.control, options.c_str());
@@ -553,7 +603,9 @@ void MacroPanel::handle_range_input(lv_event_t *event) {
   panel->active_range_control = lv_event_get_target(event);
   Macro &macro = panel->macros[panel->active_macro];
   for (const Parameter &parameter : macro.parameters) {
-    if (parameter.control != panel->active_range_control) continue;
+    if (parameter.control != panel->active_range_control) {
+      continue;
+    }
     panel->popup_numpad->set_callback([panel, &parameter](double value) {
       const int selected = std::clamp(static_cast<int>(value), parameter.minimum, parameter.maximum);
       lv_textarea_set_text(panel->active_range_control, std::to_string(selected).c_str());
@@ -591,9 +643,15 @@ void MacroPanel::send_popup_macro() {
 
   std::string gcode;
   for (int part : macro.parts) {
-    if (!gcode.empty()) gcode += ' ';
-    if (part >= 0) gcode += macro.literals[part];
-    else gcode += values[-part - 1];
+    if (!gcode.empty()) {
+      gcode += ' ';
+    }
+    if (part >= 0) {
+      gcode += macro.literals[part];
+    }
+    else {
+      gcode += values[-part - 1];
+    }
   }
   send(gcode);
 }
@@ -602,7 +660,9 @@ void MacroPanel::close_popup() {
   // Numpad owns an overlay child of popup, so it must release that child
   // before deleting the popup that contains it.
   popup_numpad.reset();
-  if (popup != nullptr) lv_obj_del(popup);
+  if (popup != nullptr) {
+    lv_obj_del(popup);
+  }
   popup = nullptr;
   active_range_control = nullptr;
 }

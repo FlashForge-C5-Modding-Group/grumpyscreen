@@ -46,8 +46,8 @@ bindir 			?= $(prefix)/bin
 MAINSRC = 		$(wildcard $(LVGL_DIR)/src/*.cpp)
 
 # Vendor drivers for the MMU panel, one file each. A build carries only the
-# ones named here; grumpyscreen.cfg's [mmu] backend then picks between them at
-# runtime. Leave it empty for a build with the panel but no vendor support:
+# ones named here; Klipper's objects select the backend at runtime. Leave it
+# empty for a build with the panel but no vendor support:
 #   make MMU_BACKENDS="afc hh"  AFC and Happy Hare (the default)
 #   make MMU_BACKENDS="afc"     just AFC
 #   make MMU_BACKENDS=""        no vendor driver at all
@@ -265,7 +265,22 @@ test-notification-banner: $(LVGL_TEST_OBJS) $(BUILD_OBJ_DIR)/src/notification_ba
 	@$(CXX) -std=c++17 -I./src $(INC) $(DEFINES) tests/test_notification_banner.cpp $(BUILD_OBJ_DIR)/src/notification_banner.o $(BUILD_OBJ_DIR)/src/i18n.o $(LVGL_TEST_OBJS) -lm -lstdc++fs -o $(BUILD_DIR)/test_notification_banner
 	$(BUILD_DIR)/test_notification_banner
 
-test: libhv.a test-console-font test-notification-banner
+MMU_TEST_OBJS = $(filter-out $(BUILD_OBJ_DIR)/src/main.o,$(TARGET))
+.PHONY: test-mmu-lifecycle
+test-mmu-lifecycle: libhv.a wpaclient $(MMU_TEST_OBJS)
+	@$(CXX) -std=c++17 -I./src $(INC) $(DEFINES) tests/test_mmu_lifecycle.cpp $(MMU_TEST_OBJS) $(LDFLAGS) $(LDLIBS) -o $(BUILD_DIR)/test_mmu_lifecycle
+	$(BUILD_DIR)/test_mmu_lifecycle
+	$(BUILD_DIR)/test_mmu_lifecycle --startup
+	$(BUILD_DIR)/test_mmu_lifecycle --hidden
+
+.PHONY: test-prompt-panel
+test-prompt-panel: libhv.a wpaclient $(MMU_TEST_OBJS)
+	@$(CXX) -std=c++17 -I./src $(INC) $(DEFINES) tests/test_prompt_panel.cpp $(MMU_TEST_OBJS) $(LDFLAGS) $(LDLIBS) -o $(BUILD_DIR)/test_prompt_panel
+	$(BUILD_DIR)/test_prompt_panel
+	$(BUILD_DIR)/test_prompt_panel --phone
+	$(BUILD_DIR)/test_prompt_panel --tablet
+
+test: libhv.a test-console-font test-notification-banner test-mmu-lifecycle test-prompt-panel
 	@mkdir -p $(BUILD_DIR)
 	g++ -std=gnu++17 -O2 -I./src -I$(DEPS_DIR)/include/ tests/test_config.cpp -o $(BUILD_DIR)/test_config
 	$(BUILD_DIR)/test_config

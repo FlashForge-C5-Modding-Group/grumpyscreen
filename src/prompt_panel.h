@@ -27,7 +27,9 @@ class PromptPanel : public NotifyConsumer {
         void handle_macro_response(json &j);
         void consume(json &j);
 
-        lv_obj_t *get_container();
+#ifdef OS_ANDROID
+        lv_obj_t *get_container() { return prompt_cont; }
+#endif
         void handle_callback(lv_event_t *event);
         void handle_step(lv_event_t *event);
 
@@ -49,6 +51,7 @@ class PromptPanel : public NotifyConsumer {
         enum class KlipperDialog { NONE, MANUAL_PROBE, SCREWS_TILT };
 
         void fit_box();
+        void fit_manual_probe(lv_obj_t *table);
         void open_numpad(std::string cmd);
         lv_obj_t *add_button(lv_obj_t *parent, const std::string &text, const std::string &cmd, const std::string &type);
         lv_obj_t *add_text(const std::string &text);

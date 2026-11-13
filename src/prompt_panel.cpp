@@ -7,6 +7,8 @@
 #include "logger.h"
 #include "theme.h"
 
+#include <algorithm>
+
 using namespace Theme;
 
 // a colour as label recolour wants it: "#RRGGBB text#"
@@ -32,11 +34,21 @@ static lv_obj_t *button_row(lv_obj_t *parent, lv_flex_align_t align) {
 // what colour it is. A default button keeps the flat button look.
 static void colour_prompt_btn(lv_obj_t *btn, const std::string &type) {
   lv_color_t c;
-  if (type == "primary") c = theme_primary();
-  else if (type == "secondary") c = theme_secondary();
-  else if (type == "info" || type == "warning") c = col(WARNING);
-  else if (type == "error") c = col(DANGER);
-  else return;
+  if (type == "primary") {
+    c = theme_primary();
+  }
+  else if (type == "secondary") {
+    c = theme_secondary();
+  }
+  else if (type == "info" || type == "warning") {
+    c = col(WARNING);
+  }
+  else if (type == "error") {
+    c = col(DANGER);
+  }
+  else {
+    return;
+  }
   lv_obj_set_style_bg_color(btn, c, 0);
   lv_obj_set_style_text_color(btn, col(ON_PRIMARY), 0);
 }
@@ -150,7 +162,9 @@ void PromptPanel::show_banner(const std::string &text, bool error) {
 // M117: an empty message clears it, and an error on screen is not replaced.
 void PromptPanel::update_display_message(const std::string &message) {
   auto &banner = NotificationBanner::instance();
-  if (banner.visible(NotificationBanner::Source::Klipper)) return;
+  if (banner.visible(NotificationBanner::Source::Klipper)) {
+    return;
+  }
   show_banner(message, false);
 }
 
@@ -279,8 +293,27 @@ void PromptPanel::update_manual_probe(json &mp) {
   lv_label_set_text(z_max_label, z_field("Z Max", mp["z_position_upper"]).c_str());
 
   if (opening) {
-    fit_box();
+    fit_manual_probe(lv_obj_get_child(flex, 0));
   }
+}
+
+void PromptPanel::fit_manual_probe(lv_obj_t *table) {
+  fit_box();
+  const int overflow = lv_obj_get_scroll_bottom(flex);
+  if (overflow <= 0) {
+    return;
+  }
+  // Android's fonts keep scaling beyond the printer fonts' 28px limit. Fit
+  // the control rows below the Z readout before resorting to scrolling.
+  const int rows = lv_obj_get_child_cnt(table) - 1;
+  const int height = std::max(scale_r(32), touch_h() - (overflow + rows - 1) / rows);
+  for (uint32_t i = 1; i < lv_obj_get_child_cnt(table); ++i) {
+    lv_obj_t *row = lv_obj_get_child(table, i);
+    for (uint32_t b = 0; b < lv_obj_get_child_cnt(row); ++b) {
+      lv_obj_set_height(lv_obj_get_child(row, b), height);
+    }
+  }
+  fit_box();
 }
 
 void PromptPanel::show_screws_tilt(json &st) {

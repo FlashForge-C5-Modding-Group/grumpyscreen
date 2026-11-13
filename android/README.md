@@ -34,6 +34,29 @@ The release APK is signed with `KEYSTORE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and
 `KEY_PASSWORD` from the environment; without them it is signed with the debug
 key so it still installs.
 
+### CI and releases
+
+The `android build` GitHub Actions workflow builds debug-signed APK artifacts
+for pull requests and branches, including forks. A push to `main` in
+`pellcorp/grumpyscreen` (including a merged PR) builds a signed APK and uploads
+`grumpyscreen.apk` to the same `v2.0.0-<count>` GitHub Release as the
+printer builds. Running the workflow manually on upstream `main` also builds
+and publishes the signed APK.
+
+Create the `android-release` environment under repository **Settings >
+Environments**, restrict its deployment branches to `main`, and add these
+environment secrets:
+
+* `ANDROID_KEYSTORE`: the base64-encoded release keystore
+* `ANDROID_KEYSTORE_PASSWORD`: its password
+* `ANDROID_KEY_ALIAS`: the signing key's alias
+* `ANDROID_KEY_PASSWORD`: the signing key's password
+
+The signing job requires all four secrets and removes the decoded keystore
+after the build. The publishing job runs only after the signed build succeeds
+and has permission to upload release assets. PR and branch builds do not
+reference signing secrets or the release environment.
+
 ## Using it
 
 * First start searches the network and lists the printers it finds: tap one
@@ -42,21 +65,58 @@ key so it still installs.
   the device itself, and lists only hosts that answer like Moonraker, by
   hostname. A printer elsewhere can still be typed in (`host`, `host:port` or
   a pasted `http://host:7125/` all work).
-* The **☰** at the top left (or Back) opens the printer list:
-  every printer you have connected to is remembered by name, the search runs
-  again, and choosing one and Connect switches to it (the app restarts itself).
-  Saved printers show whether they are online (each is asked for
-  Moonraker's `/server/info`); only the current one is connected.
+* The **☰** at the top of the left navigation (or Back) opens the printer list.
+  The menu button is available on every tab and hides while a full-screen panel
+  or prompt is open. Other dialogs do not change its visibility.
+  Every printer you have connected to is remembered by
+  name, the search runs again, and choosing one and Connect switches to it (the
+  app restarts itself).
+  Connect also reloads configuration when choosing the current printer.
+  Opening the app after Exit shows the printer list with no printer UI
+  underneath. Switching to another app and back keeps the same running
+  printer UI and its downloaded configuration. The selected printer in the
+  list is checked using Moonraker's `/server/info`;
+  Connect is enabled only once it shows online. Offline printers are checked
+  again while the list is open; checks stop once the selected printer is
+  online. Other saved printers are checked when selected. Typed addresses
+  are checked the same way. Klipper can be down or restarting as long as
+  Moonraker responds.
   Long-press a saved printer to forget it. The same dialog can make the app
   the home screen, for a tablet dedicated to a printer. It is drawn with
   grumpyscreen's own `[theme]` colours and Montserrat, the UI's font.
-* Settings changed in the UI are saved to the app's
-  `files/grumpyscreen-override.cfg`; a `[theme]` there restyles the printer
-  dialog too.
+  **Exit app** closes the app, removes it from Recents and stops its
+  connection to Moonraker. Opening it again shows the printer list with the
+  saved printers and settings.
+* **Check for updates** in the printer list (☰) checks this repository's GitHub
+  releases when pressed. If a newer version is available, choose **Open release**
+  to open it in your browser, download `grumpyscreen.apk`
+  from the release assets, and open it to install the update. Your printers
+  and settings are kept. Android may ask you to allow installs from your
+  browser or file manager. GrumpyScreen does not request permission to install
+  apps. There are no automatic update checks.
+* Connect downloads the configuration while keeping the printer list open.
+  The button shows **Connecting…** until the configuration is ready, then
+  opens the native UI. The app downloads
+  `/server/files/config/grumpyscreen.ini` from the selected Moonraker host and
+  port. Put `grumpyscreen.ini` in the printer's configuration directory and
+  edit it through Fluidd or Mainsail. It is an override over the APK's bundled
+  `grumpyscreen.cfg`, so it only needs the settings you want to change.
+  A `[theme]` also styles the app's printer dialog.
+  If the file is missing (HTTP 404), the bundled defaults are used. Other
+  download errors appear in the printer list, where you can press Connect
+  to retry or select a different printer before the UI starts.
+  Each connection downloads a fresh copy; the session copy in the app cache
+  is never reused for a new connection or another printer. Returning from
+  another app keeps the current session and does not download the INI again.
+* Android has no local GrumpyScreen settings or Settings subtab. Existing
+  `files/grumpyscreen-override.cfg` files from older versions are removed;
+  move any settings you want to keep into the printer's `grumpyscreen.ini`.
+  Saved printer addresses and the home-screen preference still belong to
+  Android. The selected host/port and Android's thumbnail cache take priority
+  over any `[moonraker]` values in the INI.
 
 * Thumbnails are downloaded from Moonraker into the app cache.
-* The screen stays on while the app is in front; grumpyscreen's own screen
-  timeout decides when it goes dark.
+* Screen timeout and brightness follow the device's Android settings.
 * The UI renders at the screen's native resolution; grumpyscreen sizes its
   layout from the display, as it does on the printer panels.
 * It redraws at the display's refresh rate (asking for the fastest mode the
@@ -67,24 +127,29 @@ key so it still installs.
 
 The UI is the same code, so every panel is there except the ones that act
 on the printer host itself, which are not compiled into the app. The Tools
-tab is always the same four tiles; the `[commands]` in grumpyscreen.cfg are
+tab is always the same three tiles; the `[commands]` in grumpyscreen.cfg are
 not used.
 
 | Tools tile | K1 | Android |
 |---|---|---|
 | Restart Klipper | Moonraker `machine.services.restart` | same |
 | Firmware Restart | Klipper RPC | same |
-| Restart GUI | restarts the service | restarts the app |
+| Restart GUI | restarts the service | not built |
 | Shutdown Host | Moonraker `machine.shutdown` | same |
 | Create Support ZIP, Switch to Stock, Factory Reset | printer-side scripts | not built |
 | Network tab | the printer's wifi | not built: Android manages the device's wifi |
 
-The screen timeout turns the backlight off, as on the printer.
+The Settings subtab is omitted on Android; Tools and About remain available.
+For example, set `[ui]` `prompt_emergency_stop` in `grumpyscreen.ini` to
+configure emergency-stop confirmation. Restart the app or select the printer
+and Connect again to load edits. Screen timeout follows Android's settings.
+For a dedicated tablet that should stay on while plugged in, enable **Stay
+awake** in Android's **Developer options**.
 
 #### Macros
 
 The console's Macros tab is the same as on the printer: one tile per
-`[macro "..."]` section, which go in `grumpyscreen-override.cfg`.
+`[macro "..."]` section, which go in the printer's `grumpyscreen.ini`.
 
 Logs go to logcat: `adb logcat -s grumpyscreen`.
 
@@ -109,8 +174,10 @@ thirds of what a 1600x720 phone needs and a third of a 2560x1600 tablet's.
 The app instead draws Montserrat Medium (the face the built-in fonts are
 made from) with [FreeType](https://freetype.org/) at exactly the size asked
 for, with LVGL's symbols from the same FontAwesome file
-(`android/app/src/main/cpp/grumpy_fonts.cpp`). FreeType 2.13.3 is fetched,
-checksum pinned, when CMake configures.
+(`android/app/src/main/cpp/grumpy_fonts.cpp`). FreeType 2.13.3 is unpacked
+from the vendored source archive in `android/app/src/main/cpp/third_party`,
+with its SHA-256 checked when CMake configures. Clean builds do not need to
+download FreeType.
 
 ## Measuring
 
@@ -119,9 +186,18 @@ native heap) and CPU use, idle and while switching nav tabs, over adb.
 
 ## Trying it without a printer
 
+Run the HTTP configuration and printer selection tests with a JDK installed:
+
+```
+bash android/tools/test-printer-config.sh
+```
+
 ```
 python3 tools/fake_moonraker.py --port 7125 --http-thumbnails
 ```
 
 and point the app at your machine's address (from the Android emulator,
 `10.0.2.2`).
+
+To try printer configuration, put `grumpyscreen.ini` in the simulator's
+`config` directory (`/tmp/grumpy-sim-7125/config` by default) and Connect again.

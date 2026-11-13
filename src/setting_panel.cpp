@@ -1,15 +1,16 @@
 #include "setting_panel.h"
 #include "config.h"
 #include "logger.h"
+#ifndef OS_ANDROID
 #include "subprocess.hpp"
+#endif
 #include "simple_dialog.h"
 #include "icons.h"
 #include "theme.h"
 
-#include <experimental/filesystem>
 #include <vector>
 
-namespace fs = std::experimental::filesystem;
+#ifndef OS_ANDROID
 namespace sp = subprocess;
 
 struct deferred_cmd_ctx {
@@ -29,20 +30,19 @@ static const char *DISPLAY_SLEEP_MAP[] = {"Never", "1 min", "5 min", "10 min", "
 
 static int display_sleep_index(int32_t seconds) {
   for (size_t i = 0; i < sizeof(DISPLAY_SLEEP_VALUES) / sizeof(DISPLAY_SLEEP_VALUES[0]); ++i) {
-    if (DISPLAY_SLEEP_VALUES[i] == seconds) return static_cast<int>(i);
+    if (DISPLAY_SLEEP_VALUES[i] == seconds) {
+      return static_cast<int>(i);
+    }
   }
   return -1;
 }
 
-#ifndef OS_ANDROID
 static WifiPanelOptions embedded_wifi_options(lv_obj_t *parent) {
   WifiPanelOptions opts;
   opts.parent = parent;
   opts.flush = true;
   return opts;
 }
-#endif
-
 static int call_command(const std::string &cmd) {
     try {
         return sp::call(cmd);
@@ -85,6 +85,7 @@ static void run_command_deferred(lv_obj_t * mbox,
     lv_timer_t * timer = lv_timer_create(run_deferred_command_cb, delay_ms, ctx);
     lv_timer_set_repeat_count(timer, 1);
 }
+#endif
 
 static void layout_tiles(lv_obj_t *cont, const std::vector<ButtonContainer *> &tiles) {
   static const size_t cols = 4;
@@ -108,7 +109,9 @@ static lv_obj_t *add_about_line(lv_obj_t *parent, const std::string &text, bool 
   lv_obj_set_width(label, LV_PCT(100));
   lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
   lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
-  if (title) lv_obj_add_style(label, &Theme::styles().dim_label, 0);
+  if (title) {
+    lv_obj_add_style(label, &Theme::styles().dim_label, 0);
+  }
   return label;
 }
 
@@ -120,14 +123,17 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   , tabview(lv_tabview_create(cont, LV_DIR_TOP, Theme::scale_r(36)))
   , actions_tab(lv_tabview_add_tab(tabview, "Tools"))
 #ifndef OS_ANDROID
-  // (Android manages the device's wifi itself: no Network tab there)
+  // Android manages wifi itself and reads settings from the printer's INI.
   , wifi_tab(lv_tabview_add_tab(tabview, "Network"))
-#endif
   , settings_tab(lv_tabview_add_tab(tabview, "Settings"))
+#endif
   , about_tab(lv_tabview_add_tab(tabview, "About"))
   , actions_cont(Theme::create_screen(actions_tab))
+#ifndef OS_ANDROID
   , settings_cont(Theme::create_screen(settings_tab))
+#endif
   , about_cont(Theme::create_screen(about_tab))
+#ifndef OS_ANDROID
   , emergency_prompt_switch(nullptr)
   , emergency_stop_warning(nullptr)
   , sleep_timeout_selector(nullptr)
@@ -135,6 +141,7 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   , language_selector(nullptr)
 #endif
   , sleep_timeout_warning(nullptr)
+#endif
 #ifdef COSMOS
   , update_manager(c, l)
 #endif
@@ -145,8 +152,8 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
         "Restart Klipper", "Do you want to restart klipper?", {"Back", "Restart Klipper"})
   , restart_firmware_btn(actions_cont, Icons::FIRMWARE_IMG, "Firmware\nRestart", &SettingPanel::_handle_callback, this,
         "Firmware Restart", "Do you want to perform a firmware restart?", {"Back", "Firmware Restart"})
-  , guppy_restart_btn(actions_cont, Icons::GUI_IMG, "Restart GUI", &SettingPanel::_handle_callback, this)
 #ifndef OS_ANDROID
+  , guppy_restart_btn(actions_cont, Icons::GUI_IMG, "Restart GUI", &SettingPanel::_handle_callback, this)
   // The app has no use for the printer-side tools: it cannot zip the
   // printer's logs, and a phone has no stock firmware to switch a printer to
   , support_zip_btn(actions_cont, Icons::SUPPORT_ZIP_IMG, "Create\nSupport ZIP", &SettingPanel::_handle_callback, this)
@@ -176,7 +183,9 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
 #ifndef OS_ANDROID
   lv_obj_set_style_pad_all(wifi_tab, 0, 0);
 #endif
+#ifndef OS_ANDROID
   lv_obj_set_style_pad_all(settings_tab, 0, 0);
+#endif
   lv_obj_set_style_pad_all(about_tab, 0, 0);
   Theme::style_embedded_tabview(tabview);
 
@@ -197,6 +206,8 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   add_about_line(about_panel, std::string(I18n::tr("Branch: ")) + GUPPYSCREEN_BRANCH);
   add_about_line(about_panel, std::string(I18n::tr("Version: ")) + GUPPYSCREEN_VERSION);
 
+#ifndef OS_ANDROID
+  // Android configuration is edited in the printer's grumpyscreen.ini.
   lv_obj_t *settings_panel = lv_obj_create(settings_cont);
   lv_obj_clear_flag(settings_panel, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_style(settings_panel, &Theme::styles().panel, 0);
@@ -219,6 +230,7 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   lv_obj_remove_style_all(emergency_text);
   lv_obj_clear_flag(emergency_text, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_set_width(emergency_text, 0);
+  lv_obj_set_height(emergency_text, LV_SIZE_CONTENT);
   lv_obj_set_flex_grow(emergency_text, 1);
   lv_obj_set_flex_flow(emergency_text, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_flex_align(emergency_text, LV_FLEX_ALIGN_START,
@@ -264,11 +276,11 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   lv_label_set_long_mode(sleep_timeout_warning, LV_LABEL_LONG_WRAP);
   lv_obj_set_style_text_color(sleep_timeout_warning, Theme::col(Theme::WARNING), 0);
   refresh_sleep_timeout_warning();
+#endif
 
 #ifdef OS_ANDROID
   // The app's tools are the same on every printer: they all go through Moonraker
-  layout_tiles(actions_cont, {&restart_klipper_btn, &restart_firmware_btn, &guppy_restart_btn,
-                              &shutdown_host_btn});
+  layout_tiles(actions_cont, {&restart_klipper_btn, &restart_firmware_btn, &shutdown_host_btn});
 #else
 #ifndef COSMOS
   add_about_line(settings_panel, "Language", true);
@@ -277,7 +289,9 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
   languages = I18n::available(I18n::default_dir());
   std::string language_options;
   for (size_t i = 0; i < languages.size(); i++) {
-    if (i > 0) language_options += "\n";
+    if (i > 0) {
+      language_options += "\n";
+    }
     language_options += languages[i].name;
   }
   lv_dropdown_set_options(language_selector, language_options.c_str());
@@ -293,17 +307,25 @@ SettingPanel::SettingPanel(KWebSocketClient &c, std::mutex &l, lv_obj_t *parent)
       &restart_klipper_btn, &restart_firmware_btn, &guppy_restart_btn};
   struct Optional { ButtonContainer *tile; const char *cmd; };
   for (const Optional &o : {Optional{&support_zip_btn, "/commands/support_zip_cmd"}}) {
-    if (has_cmd(o.cmd)) action_tiles.push_back(o.tile); else o.tile->hide();
+    if (has_cmd(o.cmd)) {
+      action_tiles.push_back(o.tile);
+    } else {
+      o.tile->hide();
+    }
   }
   for (const Optional &o : {Optional{&switch_to_stock_btn, "/commands/switch_to_stock_cmd"},
                             Optional{&factory_reset_btn, "/commands/factory_reset_cmd"}
                             }) {
-    if (has_cmd(o.cmd)) action_tiles.push_back(o.tile); else o.tile->hide();
+    if (has_cmd(o.cmd)) {
+      action_tiles.push_back(o.tile);
+    } else {
+      o.tile->hide();
+    }
   }
 #ifdef COSMOS
   action_tiles.push_back(&update_btn);
 #else
-  action_tiles.push_back(&shutdown_host_btn);  // through Moonraker
+  action_tiles.push_back(&shutdown_host_btn);
 #endif
 
   layout_tiles(actions_cont, action_tiles);
@@ -330,8 +352,12 @@ void SettingPanel::select_first_tab() {
 }
 
 void SettingPanel::set_firmware_restart_available(bool available) {
-  if (available) restart_firmware_btn.enable();
-  else restart_firmware_btn.disable();
+  if (available) {
+    restart_firmware_btn.enable();
+  }
+  else {
+    restart_firmware_btn.disable();
+  }
 }
 
 void SettingPanel::_tabview_event_cb(lv_event_t *event) {
@@ -340,6 +366,7 @@ void SettingPanel::_tabview_event_cb(lv_event_t *event) {
   }
 }
 
+#ifndef OS_ANDROID
 void SettingPanel::_setting_changed_cb(lv_event_t *event) {
   static_cast<SettingPanel *>(lv_event_get_user_data(event))->setting_changed(event);
 }
@@ -353,10 +380,12 @@ void SettingPanel::setting_changed(lv_event_t *event) {
     const bool enabled = lv_obj_has_state(emergency_prompt_switch, LV_STATE_CHECKED);
     saved = conf->set_prompt_emergency_stop(enabled);
     if (!saved) {
-      if (conf->get<bool>("/ui/prompt_emergency_stop"))
+      if (conf->get<bool>("/ui/prompt_emergency_stop")) {
         lv_obj_add_state(emergency_prompt_switch, LV_STATE_CHECKED);
-      else
+      }
+      else {
         lv_obj_clear_state(emergency_prompt_switch, LV_STATE_CHECKED);
+      }
     }
   } else if (target == sleep_timeout_selector) {
     const uint32_t selected = lv_btnmatrix_get_selected_btn(sleep_timeout_selector);
@@ -393,8 +422,12 @@ void SettingPanel::setting_changed(lv_event_t *event) {
                          "The config file could not be updated.", true, true);
   }
 
-  if (target == emergency_prompt_switch) refresh_emergency_stop_warning();
-  if (target == sleep_timeout_selector) refresh_sleep_timeout_warning();
+  if (target == emergency_prompt_switch) {
+    refresh_emergency_stop_warning();
+  }
+  if (target == sleep_timeout_selector) {
+    refresh_sleep_timeout_warning();
+  }
 }
 
 void SettingPanel::refresh_sleep_timeout_warning() {
@@ -408,7 +441,9 @@ void SettingPanel::refresh_sleep_timeout_warning() {
 #ifndef COSMOS
 void SettingPanel::select_current_language() {
   for (size_t i = 0; i < languages.size(); i++) {
-    if (languages[i].code == I18n::current()) lv_dropdown_set_selected(language_selector, i);
+    if (languages[i].code == I18n::current()) {
+      lv_dropdown_set_selected(language_selector, i);
+    }
   }
 }
 #endif
@@ -420,6 +455,7 @@ void SettingPanel::refresh_emergency_stop_warning() {
     lv_obj_clear_flag(emergency_stop_warning, LV_OBJ_FLAG_HIDDEN);
   }
 }
+#endif
 
 void SettingPanel::refresh_active_tab() {
 #ifndef OS_ANDROID
@@ -442,25 +478,27 @@ void SettingPanel::handle_callback(lv_event_t *event) {
       };
       const int sent = ws.send_jsonrpc("machine.services.restart", {{"service", "klipper"}},
                                        [this, failed](json &r) {
-        if (!r.contains("error")) return;
+        if (!r.contains("error")) {
+          return;
+        }
         LOG_ERROR("Failed to restart Klipper: {}", r["error"].dump());
         std::lock_guard<std::mutex> lock(lv_lock);
         failed();
       });
-      if (sent < 0) failed();  // no connection to Moonraker
+      if (sent < 0) {
+        failed();
+      }  // no connection to Moonraker
     } else if (btn == restart_firmware_btn.get_container()) {
       ws.send_jsonrpc("printer.firmware_restart");
+#ifndef OS_ANDROID
     } else if (btn == guppy_restart_btn.get_container()) {
-#ifdef OS_ANDROID
-      android_restart_app();
-      return;
-#endif
       Config *conf = Config::get_instance();
       auto restart_command = conf->get<std::string>("/commands/gui_restart_cmd");
       auto ret = call_command(restart_command);
       if (ret != 0) {
         create_simple_dialog(lv_scr_act(), "Restart GUI Failed", "Failed to restart GUI!", true, true);
       }
+#endif
 #ifdef COSMOS
     } else if (btn == update_btn.get_container()) {
       // Moonraker runs the update and reports its progress to every UI.
@@ -475,12 +513,16 @@ void SettingPanel::handle_callback(lv_event_t *event) {
         create_simple_dialog(lv_scr_act(), "Shutdown Host Failed", "Failed to shutdown host!", true, true);
       };
       const int sent = ws.send_jsonrpc("machine.shutdown", json::object(), [this, failed](json &r) {
-        if (!r.contains("error")) return;
+        if (!r.contains("error")) {
+          return;
+        }
         LOG_ERROR("Failed to shutdown host: {}", r["error"].dump());
         std::lock_guard<std::mutex> lock(lv_lock);
         failed();
       });
-      if (sent < 0) failed();  // no connection to Moonraker
+      if (sent < 0) {
+        failed();
+      }  // no connection to Moonraker
 #endif
 #ifndef OS_ANDROID
     } else if (btn == support_zip_btn.get_container()) {

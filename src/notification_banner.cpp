@@ -15,7 +15,9 @@ void NotificationBanner::show(Source source, const std::string &text, Level leve
   auto &message = messages[static_cast<int>(source)];
   const bool changed = message.text != text || message.level != level;
   message.dismiss = std::move(dismiss);
-  if (!changed) return; // status ticks must not reopen dismissed messages
+  if (!changed) {
+    return;
+  } // status ticks must not reopen dismissed messages
   message.text = text;
   message.level = level;
   message.dismissed = false;
@@ -25,8 +27,16 @@ void NotificationBanner::show(Source source, const std::string &text, Level leve
 
 void NotificationBanner::clear(Source source) {
   auto &message = messages[static_cast<int>(source)];
-  if (message.text.empty()) return;
+  if (message.text.empty()) {
+    return;
+  }
   message = Message{};
+  render();
+}
+
+void NotificationBanner::clear_all() {
+  messages = {};
+  sequence = 0;
   render();
 }
 
@@ -36,25 +46,33 @@ bool NotificationBanner::visible(Source source) const {
 }
 
 void NotificationBanner::dismiss() {
-  if (current < 0) return;
+  if (current < 0) {
+    return;
+  }
   auto callback = messages[current].dismiss;
   messages[current].dismissed = true;
   render();
-  if (callback) callback();
+  if (callback) {
+    callback();
+  }
 }
 
 void NotificationBanner::render() {
   current = -1;
   for (size_t i = 0; i < messages.size(); ++i) {
     const auto &message = messages[i];
-    if (message.text.empty() || message.dismissed) continue;
+    if (message.text.empty() || message.dismissed) {
+      continue;
+    }
     if (current < 0 || message.level > messages[current].level ||
         (message.level == messages[current].level && message.order > messages[current].order)) {
       current = static_cast<int>(i);
     }
   }
   if (current < 0) {
-    if (container) lv_obj_add_flag(container, LV_OBJ_FLAG_HIDDEN);
+    if (container) {
+      lv_obj_add_flag(container, LV_OBJ_FLAG_HIDDEN);
+    }
     return;
   }
   if (!container) {
@@ -65,6 +83,8 @@ void NotificationBanner::render() {
     lv_obj_set_style_radius(container, scale_r(8), 0);
     lv_obj_set_style_pad_hor(container, scale_r(12), 0);
     lv_obj_set_style_pad_ver(container, scale_r(8), 0);
+    // The top layer has no screen font to inherit; scale both text and X.
+    lv_obj_set_style_text_font(container, scale_font(12), 0);
     lv_obj_set_flex_flow(container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(container, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);

@@ -68,7 +68,9 @@ int KWebSocketClient::connect(const char* url,
           deliver_deferred();
         } else if (j.contains("params") && !j["params"].empty() && j["params"][0].is_object()) {
           deferred_status.merge_patch(j["params"][0]);
-          if (j["params"].size() > 1) deferred_eventtime = j["params"][1];
+          if (j["params"].size() > 1) {
+            deferred_eventtime = j["params"][1];
+          }
         }
         for (const auto &entry : notify_consumers) {
           if (!asleep || entry->consume_while_asleep()) {
@@ -163,7 +165,9 @@ void KWebSocketClient::set_display_asleep(bool asleep) {
 }
 
 void KWebSocketClient::deliver_deferred() {
-  if (deferred_status.is_null() || display_asleep.load()) return;
+  if (deferred_status.is_null() || display_asleep.load()) {
+    return;
+  }
   json j = {{"jsonrpc", "2.0"},
             {"method", "notify_status_update"},
             {"params", json::array({std::move(deferred_status), deferred_eventtime})}};
@@ -217,7 +221,9 @@ int KWebSocketClient::send_jsonrpc(const std::string &method) {
 int KWebSocketClient::gcode_script(const std::string &gcode) {
   json cmd = {{ "script", gcode }};
   LOG_TRACE("{}", gcode);
-  if (gcode_sent_callback) gcode_sent_callback(gcode);
+  if (gcode_sent_callback) {
+    gcode_sent_callback(gcode);
+  }
   return send_jsonrpc("printer.gcode.script", cmd);
 }
 

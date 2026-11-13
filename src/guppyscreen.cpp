@@ -9,7 +9,7 @@
 #endif
 #include "logger.h"
 #include "state.h"
-#ifdef GUPPY_CALIBRATE
+#if defined(GUPPY_CALIBRATE) || (defined(GUPPY_FBDEV) && !defined(COSMOS))
 #include <fstream>
 #endif
 #ifdef GUPPY_SDL
@@ -20,13 +20,35 @@ namespace fs = std::experimental::filesystem;
 
 namespace {
 constexpr double calibration_version = 2.0;
+
+#if defined(GUPPY_FBDEV) && !defined(COSMOS)
+std::string backlight_dir;
+std::string backlight_max;
+
+void backlight_init() {
+  std::error_code ec;
+  for (const auto &e : fs::directory_iterator("/sys/class/backlight", ec)) {
+    std::ifstream max(e.path() / "max_brightness");
+    if (max >> backlight_max) {
+      backlight_dir = e.path();
+      return;
+    }
+  }
+}
+
+void backlight_set(const std::string &value) {
+  std::ofstream(backlight_dir + "/brightness") << value;
+}
+#endif
 }
 
 GuppyScreen *GuppyScreen::instance = NULL;
 lv_style_t GuppyScreen::style_container;
 lv_theme_t GuppyScreen::th_new;
 
+#ifndef OS_ANDROID
 lv_obj_t *GuppyScreen::screen_saver = NULL;
+#endif
 
 KWebSocketClient GuppyScreen::ws(NULL);
 
@@ -45,16 +67,19 @@ GuppyScreen::GuppyScreen()
   , main_panel(ws, lv_lock, spoolman_panel.get(), mmu_panel.get())
   , init_panel(main_panel, lv_lock)
 {
-  // the ids here are the values accepted by /mmu/backend
   if (mmu_panel == nullptr) {
     main_panel.create_panel();
     return;
   }
 #ifdef MMU_BACKEND_AFC
-  if (afc_backend != nullptr) mmu_panel->add_backend("afc", afc_backend.get());
+  if (afc_backend != nullptr) {
+    mmu_panel->add_backend(afc_backend.get());
+  }
 #endif
 #ifdef MMU_BACKEND_HH
-  if (hh_backend != nullptr) mmu_panel->add_backend("hh", hh_backend.get());
+  if (hh_backend != nullptr) {
+    mmu_panel->add_backend(hh_backend.get());
+  }
 #endif
   main_panel.create_panel();
 }
@@ -87,6 +112,14 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
 #ifdef GUPPY_FBDEV
   fbdev_init();
   fbdev_unblank();
+#ifndef COSMOS
+  if (conf->get<bool>("/ui/display_sleep_backlight", false)) {
+    backlight_init();
+    if (!backlight_dir.empty()) {
+      backlight_set(backlight_max);
+    }
+  }
+#endif
 #endif
 
   hal_init(primary_color, secondary_color);
@@ -116,15 +149,24 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
 
   GuppyScreen *gs = GuppyScreen::get();
 
+#ifndef OS_ANDROID
   screen_saver = lv_obj_create(lv_scr_act());
 
   lv_obj_set_size(screen_saver, LV_PCT(100), LV_PCT(100));
   lv_obj_set_style_bg_opa(screen_saver, LV_OPA_100, 0);
-#ifndef GUPPY_FBDEV
+#ifdef GUPPY_FBDEV
+#ifndef COSMOS
+  // with the backlight off it only has to catch the waking touch
+  if (!backlight_dir.empty()) {
+    lv_obj_set_style_opa(screen_saver, LV_OPA_TRANSP, 0);
+  }
+#endif
+#else
   // nothing blanks the panel here, so the screen saver itself has to be dark
   lv_obj_set_style_bg_color(screen_saver, lv_color_black(), 0);
 #endif
   lv_obj_move_background(screen_saver);
+#endif
 
 #ifdef GUPPY_CALIBRATE
   lv_obj_t *main_screen = lv_disp_get_scr_act(NULL);
@@ -160,6 +202,8 @@ GuppyScreen *GuppyScreen::init(std::function<void(lv_color_t, lv_color_t)> hal_i
 
 void GuppyScreen::loop() {
   /*Handle LitlevGL tasks (tickless mode)*/
+#ifndef OS_ANDROID
+  // Android manages screen timeout and brightness through the device settings.
   std::atomic_bool is_sleeping(false);
   Config *conf = Config::get_instance();
   int32_t display_sleep = conf->get<int32_t>("/ui/display_sleep_sec") * 1000;
@@ -170,6 +214,7 @@ void GuppyScreen::loop() {
   LOG_DEBUG("Display sleep timeout: {} ms, starting inactivity baseline: {} ms",
            display_sleep,
            inactive_baseline);
+#endif
 
   while (1) {
 #ifdef GUPPY_SDL
@@ -181,6 +226,11 @@ void GuppyScreen::loop() {
     lv_lock.lock();
     const uint32_t time_till_next = lv_timer_handler();
 
+#ifdef OS_ANDROID
+    android_set_menu_visible(instance->main_panel.printer_menu_visible());
+#endif
+
+#ifndef OS_ANDROID
     // The Settings panel updates Config in place, so do not keep using the
     // startup snapshot after the user changes the timeout.
     // Once a second is soon enough, and spares a config lookup every pass.
@@ -188,6 +238,7 @@ void GuppyScreen::loop() {
       sleep_checked = lv_tick_get();
       display_sleep = conf->get<int32_t>("/ui/display_sleep_sec") * 1000;
     }
+#endif
 
 #ifdef GUPPY_SDL
     if (sdl_quit_qry) {
@@ -196,6 +247,7 @@ void GuppyScreen::loop() {
     }
 #endif
 
+#ifndef OS_ANDROID
     if (display_sleep != -1) {
       const uint32_t current_inactive = lv_disp_get_inactive_time(NULL);
       if (current_inactive < last_inactive) {
@@ -208,10 +260,15 @@ void GuppyScreen::loop() {
         if (!is_sleeping.load()) {
           LOG_DEBUG("putting display to sleeping after {} ms effective inactivity", effective_inactive);
 #ifdef GUPPY_FBDEV
+#ifdef COSMOS
           fbdev_blank();
+#else
+          if (backlight_dir.empty()) {
+            fbdev_blank();
+          } else {
+            backlight_set("0");
+          }
 #endif
-#ifdef OS_ANDROID
-          android_set_display_sleep(true);
 #endif
           lv_obj_move_foreground(screen_saver);
           // Draw the cover once, then stop drawing and animating until wake
@@ -224,18 +281,24 @@ void GuppyScreen::loop() {
         if (is_sleeping.load()) {
           LOG_DEBUG("waking up display");
 #ifdef GUPPY_FBDEV
+#ifdef COSMOS
           fbdev_unblank();
+#else
+          if (backlight_dir.empty()) {
+            fbdev_unblank();
+          } else {
+            backlight_set(backlight_max);
+          }
+#endif
 #endif
           pause_drawing(false);
-#ifdef OS_ANDROID
-          android_set_display_sleep(false);
-#endif
           lv_obj_move_background(screen_saver);
           ws.set_display_asleep(false);
           is_sleeping = false;
         }
       }
     }
+#endif
 
     lv_lock.unlock();
 
@@ -253,8 +316,12 @@ void GuppyScreen::loop() {
 #endif
     const uint32_t max_wait = is_sleeping.load() ? 100 : awake_wait;
     uint32_t wait_ms = time_till_next;
-    if (wait_ms < 1) wait_ms = 1;
-    else if (wait_ms > max_wait) wait_ms = max_wait;
+    if (wait_ms < 1) {
+      wait_ms = 1;
+    }
+    else if (wait_ms > max_wait) {
+      wait_ms = max_wait;
+    }
     usleep(wait_ms * 1000);
   }
 }
@@ -263,9 +330,15 @@ void GuppyScreen::pause_drawing(bool pause) {
   lv_disp_t *disp = lv_disp_get_default();
   lv_timer_t *timers[] = {disp != NULL ? disp->refr_timer : NULL, lv_anim_get_timer()};
   for (lv_timer_t *t : timers) {
-    if (t == NULL) continue;
-    if (pause) lv_timer_pause(t);
-    else lv_timer_resume(t);
+    if (t == NULL) {
+      continue;
+    }
+    if (pause) {
+      lv_timer_pause(t);
+    }
+    else {
+      lv_timer_resume(t);
+    }
   }
 }
 
@@ -295,7 +368,9 @@ void GuppyScreen::new_theme_apply_cb(lv_theme_t *th, lv_obj_t *obj) {
   // style on top for a genuinely different role (the console log is a panel).
   // Screens are skipped: the first one is created before there is an active
   // screen to read the primary colour from, and styles() would hang on it.
-  if (lv_obj_get_parent(obj) == NULL) return;
+  if (lv_obj_get_parent(obj) == NULL) {
+    return;
+  }
   Theme::Styles &s = Theme::styles();
   // every text button is the stock grey button; LVGL's own theme, this one's
   // parent, darkens it under a finger and greys it out when disabled
@@ -365,7 +440,9 @@ void GuppyScreen::new_theme_apply_cb(lv_theme_t *th, lv_obj_t *obj) {
     lv_obj_add_style(obj, &s.groove, LV_PART_MAIN);
     lv_obj_add_style(obj, &s.fill, LV_PART_INDICATOR);
     lv_obj_add_style(obj, &s.knob, LV_PART_KNOB);
-    if (lv_obj_check_type(obj, &lv_slider_class)) lv_obj_add_style(obj, &s.slider, LV_PART_MAIN);
+    if (lv_obj_check_type(obj, &lv_slider_class)) {
+      lv_obj_add_style(obj, &s.slider, LV_PART_MAIN);
+    }
   }
 }
 

@@ -7,6 +7,8 @@
 extern "C" uint32_t custom_tick_get() { return 0; }
 namespace Theme {
 int scale_r(int px) { return px; }
+// Use a font distinct from LV_FONT_DEFAULT to catch unscaled overlay text.
+const lv_font_t *scale_font(int) { return &lv_font_montserrat_20; }
 lv_color_t col(Colour colour) { return lv_color_hex(0x101010 * (int(colour) + 1)); }
 }
 
@@ -37,8 +39,12 @@ int main() {
   lv_obj_t *close = lv_obj_get_child(overlay, 1);
   assert(lv_obj_get_child_cnt(overlay) == 2); // message and close button only
   lv_obj_update_layout(overlay);
+  const auto font = Theme::scale_font(12);
+  assert(lv_obj_get_style_text_font(text, LV_PART_MAIN) == font);
+  assert(lv_obj_get_style_text_font(lv_obj_get_child(close, 0), LV_PART_MAIN) == font);
   const auto line_height = lv_font_get_line_height(lv_obj_get_style_text_font(text, LV_PART_MAIN));
   assert(lv_obj_get_height(overlay) == line_height + 16);
+  assert(lv_obj_get_height(close) == line_height);
   assert(lv_obj_get_x(close) > lv_obj_get_x(text) + lv_obj_get_width(text));
 
   banner.show(Source::Mmu, "Filament jam", Level::Error,
@@ -73,9 +79,31 @@ int main() {
   lv_obj_update_layout(overlay);
   assert(lv_obj_get_height(overlay) > line_height + 16);
   assert(lv_obj_get_x(close) >= lv_obj_get_x(text) + lv_obj_get_width(text));
-  banner.clear(Source::Mmu);
-  banner.clear(Source::Klipper);
-  banner.clear(Source::Display);
+  // Going offline clears active, queued and dismissed messages without
+  // acknowledging faults or sending dismissal commands to the printer.
+  banner.show(Source::Mmu, "Filament jam", Level::Error,
+              [&]() { ++acknowledgements; });
+  banner.clear_all();
+  assert(!banner.visible(Source::Display));
+  assert(!banner.visible(Source::Klipper));
+  assert(!banner.visible(Source::Mmu));
+  assert(lv_obj_has_flag(overlay, LV_OBJ_FLAG_HIDDEN));
+  assert(acknowledgements == 1);
+  lv_event_send(close, LV_EVENT_CLICKED, nullptr);
+  assert(acknowledgements == 1);
+
+  // Identical messages from a new session can appear again, including ones
+  // that were dismissed in the previous session.
+  banner.show(Source::Display, "Heating", Level::Info);
+  assert(std::strcmp(lv_label_get_text(text), "Heating") == 0);
+  banner.show(Source::Klipper, "Move out of range", Level::Error);
+  assert(std::strcmp(lv_label_get_text(text), "Move out of range") == 0);
+  banner.show(Source::Mmu, "Filament jam", Level::Error);
+  assert(std::strcmp(lv_label_get_text(text), "Filament jam") == 0);
+  lv_event_send(close, LV_EVENT_CLICKED, nullptr);
+  assert(acknowledgements == 1); // the old session's callback was discarded
+  banner.clear_all();
+  banner.clear_all(); // repeated disconnect/shutdown events are harmless
   assert(lv_obj_has_flag(overlay, LV_OBJ_FLAG_HIDDEN));
   std::puts("notification banner tests passed");
 }

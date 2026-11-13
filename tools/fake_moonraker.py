@@ -87,9 +87,11 @@ async def http_reply(path):
         return None
     url = urllib.parse.urlparse(path)
     parts = urllib.parse.unquote(url.path).strip("/").split("/", 3)
-    if parts[:2] == ["server", "files"] and len(parts) == 4 and parts[2] == "gcodes":
-        full = os.path.normpath(os.path.join(files.root(), parts[3]))
-        if full.startswith(os.path.normpath(files.root())) and os.path.isfile(full):
+    if parts[:2] == ["server", "files"] and len(parts) == 4 and parts[2] in ("gcodes", "config"):
+        root = os.path.abspath(files.root() if parts[2] == "gcodes"
+                               else os.path.join(S.ARGS.session_dir, "config"))
+        full = os.path.abspath(os.path.join(root, parts[3]))
+        if os.path.commonpath([root, full]) == root and os.path.isfile(full):
             with open(full, "rb") as f:
                 body = f.read()
             ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
@@ -123,7 +125,7 @@ def extra_ui_sections():
 
 
 def write_ui_config(out_path, base_path):
-    """grumpyscreen.cfg for this session: our port and backend, sim stand-ins
+    """grumpyscreen.cfg for this session: our port, sim stand-ins
     for every [commands] entry (so nothing touches the host), and sections for
     the extra hardware."""
     with open(base_path) as f:
@@ -144,8 +146,6 @@ def write_ui_config(out_path, base_path):
                 line = "port: %d" % port
             elif section == "moonraker" and key == "thumbnail_path":
                 line = "thumbnail_path: %s" % thumbs
-            elif section == "mmu" and key == "backend":
-                line = "backend: %s" % S.ARGS.backend
             elif section == "commands" and key in COMMANDS:
                 line = "%s: python3 tools/sim_hook.py %s --port %d" % (key, COMMANDS[key], port)
         out.append(line)

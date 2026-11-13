@@ -7,10 +7,6 @@
 #endif
 
 #ifdef OS_ANDROID
-// Restarts the app: the Android "Restart GUI".
-void android_restart_app();
-// Turns the backlight off (true) or back on, for the screen timeout.
-void android_set_display_sleep(bool sleeping);
 // The size to draw the nav bar's icons (nav_*) at, before any is drawn
 // (android/app/src/main/cpp/grumpy_icons.c).
 extern "C" void android_set_nav_icon_px(int px);
@@ -26,6 +22,7 @@ const struct _lv_font_t *android_text_font(int px);
 // can put its button there.
 int android_menu_height();
 void android_place_menu(int width, int height);
+void android_set_menu_visible(bool visible);
 #endif
 
 #endif // __GUPPY_PLATFORM_H__

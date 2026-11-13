@@ -44,6 +44,9 @@ class MainPanel : public NotifyConsumer {
   void append_console_output(const std::string &text);
   MmuPanel *mmu() { return mmu_panel; }
   bool home_active() const;
+#ifdef OS_ANDROID
+  bool printer_menu_visible();
+#endif
   void add_tab_change_cb(lv_event_cb_t cb, void *user_data);
   void remove_tab_change_cb(lv_event_cb_t cb, void *user_data);
   
@@ -110,7 +113,7 @@ class MainPanel : public NotifyConsumer {
   LedPanel led_panel;
   lv_obj_t *tabview;
   lv_obj_t *main_tab;
-  // NULL when /mmu/backend is none; otherwise the tab exists from startup and
+  // NULL when MMU is hidden; otherwise the tab exists from startup and
   // its button stays disabled until the backend is detected
   lv_obj_t *mmu_tab;
   lv_obj_t *spoolman_tab;

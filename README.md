@@ -1,6 +1,6 @@
 # Grumpy Screen for Klipper
 
-Grumpyscreen is a fork of GuppyScreen specifically for Simple AF and OpenCentauri Cosmos
+Grumpyscreen is a fork of GuppyScreen specifically for Simple AF, OpenCentauri Cosmos and Others
 
 ## Features
 

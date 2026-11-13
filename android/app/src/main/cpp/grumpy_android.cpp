@@ -44,6 +44,11 @@ int surface_h = 0;
 int disp_w = 0;
 int disp_h = 0;
 std::vector<uint32_t> frame;     // the whole screen, RGBA_8888
+// The native UI outlives its Activity. Keep the reserved menu bounds in
+// display pixels so a new surface can place the new Activity's button too.
+int menu_w = 0;                 // guarded by window_lock
+int menu_h = 0;
+bool menu_visible = false;      // guarded by window_lock
 
 std::atomic<int32_t> touch_x{0};
 std::atomic<int32_t> touch_y{0};
@@ -182,15 +187,16 @@ bool load_config(const Paths &p) {
     LOG_ERROR("Failed to load {}", p.config);
     return false;
   }
-  // The printer to talk to, written by the app from what the user entered.
-  // It is loaded as an override so it can only replace keys the bundled
-  // config already has.
+  // The selected printer's grumpyscreen.ini was downloaded before the surface
+  // was created. It is the only user config; Android has no writable settings.
+  if (fs::exists(p.override_cfg) && !conf->load_override(p.override_cfg)) {
+    LOG_ERROR("Failed to load printer config {}", p.override_cfg);
+    return false;
+  }
+  // Apply the selected address and Android's thumbnail cache last: a printer's
+  // INI may contain localhost or paths that only exist on the printer host.
   if (fs::exists(p.moonraker) && !conf->load_override(p.moonraker)) {
     LOG_ERROR("Failed to load {}", p.moonraker);
-  }
-  // Settings changed in the UI are written here.
-  if (fs::exists(p.override_cfg) && !conf->load_override(p.override_cfg)) {
-    LOG_ERROR("Failed to load override config {}", p.override_cfg);
   }
   conf->set_override_path(p.override_cfg);
   return true;
@@ -247,16 +253,41 @@ int android_menu_height() {
   return menu_height_px.load();
 }
 
+static void place_menu() {
+  int width, height;
+  bool visible;
+  {
+    std::lock_guard<std::mutex> g(window_lock);
+    if (menu_w <= 0 || menu_h <= 0 || disp_w <= 0 || disp_h <= 0 ||
+        surface_w <= 0 || surface_h <= 0) return;
+    // A replacement surface can have a different size; match the scaling
+    // the compositor and touch() apply to the native display.
+    width = menu_w * surface_w / disp_w;
+    height = menu_h * surface_h / disp_h;
+    visible = menu_visible;
+  }
+  call_activity("placeMenuFromNative", "(IIZ)V", static_cast<jint>(width), static_cast<jint>(height),
+                static_cast<jboolean>(visible));
+}
+
 void android_place_menu(int width, int height) {
-  call_activity("placeMenuFromNative", "(II)V", static_cast<jint>(width), static_cast<jint>(height));
+  {
+    std::lock_guard<std::mutex> g(window_lock);
+    menu_w = width;
+    menu_h = height;
+  }
+  place_menu();
 }
 
-void android_restart_app() {
-  call_activity("restartFromNative", "()V");
-}
-
-void android_set_display_sleep(bool sleeping) {
-  call_activity("setDisplaySleepFromNative", "(Z)V", static_cast<jboolean>(sleeping));
+void android_set_menu_visible(bool visible) {
+  {
+    std::lock_guard<std::mutex> g(window_lock);
+    if (menu_visible == visible) {
+      return;
+    }
+    menu_visible = visible;
+  }
+  place_menu();
 }
 
 LV_FONT_DECLARE(dejavusans_mono_14);
@@ -298,6 +329,11 @@ Java_io_github_pellcorp_grumpyscreen_GrumpyNative_setActivity(JNIEnv *env, jclas
   activity = a != nullptr ? env->NewGlobalRef(a) : nullptr;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_io_github_pellcorp_grumpyscreen_GrumpyNative_isStarted(JNIEnv *, jclass) {
+  return started.load() ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT void JNICALL
 Java_io_github_pellcorp_grumpyscreen_GrumpyNative_surfaceChanged(
     JNIEnv *env, jclass, jobject surface, jint width, jint height,
@@ -329,6 +365,9 @@ Java_io_github_pellcorp_grumpyscreen_GrumpyNative_surfaceChanged(
     std::lock_guard<std::mutex> g(GuppyScreen::get()->get_lock());
     lv_obj_invalidate(lv_scr_act());
   }
+  // MainPanel lays out only once per process, but Android can recreate the
+  // Activity (and its initially hidden menu) without restarting that process.
+  place_menu();
 }
 
 JNIEXPORT void JNICALL
