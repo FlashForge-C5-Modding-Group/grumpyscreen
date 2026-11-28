@@ -57,7 +57,8 @@ class GuppyScreen {
   std::mutex &get_lock();
 
   void connect_ws(const std::string &url);
-  static void pause_drawing(bool pause);
+  static void pause_while_asleep(bool pause);
+  static void pause_touch_reads(bool pause);
   static GuppyScreen *get();
   static GuppyScreen *init(std::function<void(lv_color_t, lv_color_t)> hal_init);
   static void loop();
